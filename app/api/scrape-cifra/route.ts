@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server'
-import * as cheerio from 'cheerio'
 
 export async function POST(request: Request) {
   try {
@@ -9,6 +8,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'URL inválida do Cifra Club.' }, { status: 400 })
     }
 
+    // Extrai o Artista direto da URL
     const urlParts = new URL(url).pathname.split('/').filter(Boolean)
     let urlArtist = ''
     if (urlParts.length >= 1) {
@@ -18,64 +18,56 @@ export async function POST(request: Request) {
         .join(' ')
     }
 
-    // Usa AllOrigins diretamente, pois o Cifra Club bloqueia IPs de servidores de nuvem (Vercel) no fetch direto
-    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`
-    const proxyResponse = await fetch(proxyUrl, {
+    // Usando a API pública do JSDelivr/AllOrigins com parâmetros alternativos ou rotas de API do próprio Cifra Club se houver,
+    // ou fallback inteligente estruturado para ignorar o bloqueio de Cloudflare simulando um Browser headless leve via fetch de mirror.
+    // Como alternativa robusta definitiva, podemos usar o serviço "r.jina.ai" que extrai conteúdo limpo em markdown de qualquer URL protegida por Cloudflare!
+    const jinaUrl = `https://r.jina.ai/${url}`
+    const jinaResponse = await fetch(jinaUrl, {
       headers: {
-        'Cache-Control': 'no-cache'
+        'Accept': 'application/json',
+        'X-With-Generated-Alt': 'true'
       }
     })
-      
-    if (!proxyResponse.ok) {
-      return NextResponse.json({ error: 'Não foi possível acessar a página da cifra.' }, { status: 400 })
-    }
-      
-    const proxyData = await proxyResponse.json()
-    const html = proxyData.contents
 
-    if (!html) {
-      return NextResponse.json({ error: 'Não foi possível acessar a página da cifra.' }, { status: 400 })
+    if (!jinaResponse.ok) {
+      return NextResponse.json({ error: 'Não foi possível contornar a segurança do Cifra Club. Tente colar a cifra manualmente.' }, { status: 400 })
     }
 
-    const $ = cheerio.load(html)
+    const jinaData = await jinaResponse.json()
+    const markdownContent = jinaData.data?.content || ''
 
-    const title = $('h1.t1').first().text().trim() || $('h1').first().text().trim() || 'Sem Título'
-    const htmlArtist = $('.art-link').first().text().trim() || $('.Cifra_artist').first().text().trim()
-    const artist = htmlArtist && htmlArtist !== 'Desconhecido' ? htmlArtist : (urlArtist || 'Desconhecido')
-
-    let rawKey = $('.cifra_tom').attr('data-tone') || 
-                 $('.js-tone').first().text().trim() || 
-                 $('.cifra_tom a').first().text().trim() || ''
-
-    const contentContainer = $('.cifra_cnt').first()
-    contentContainer.find('script, style').remove()
-
-    let content = ''
-    if (contentContainer.length > 0) {
-      content = contentContainer.text().trim()
-    } else {
-      content = $('pre').first().text().trim()
+    if (!markdownContent || markdownContent.length < 50) {
+      return NextResponse.json({ error: 'O sistema de segurança bloqueou o conteúdo. Use a aba "Modo Manual / Revisão".' }, { status: 400 })
     }
 
-    if (!rawKey) {
-      const matchChord = content.match(/\[Intro\]\s*([A-G][#b]?m?)/i) || content.trim().match(/^([A-G][#b]?m?)/)
-      rawKey = matchChord ? matchChord[1] : 'C'
+    // Extrai Título e Artista do texto markdown retornado
+    // O Jina AI costuma trazer o título no início
+    const lines = markdownContent.split('\n').map((l: string) => l.trim()).filter(Boolean)
+    let title = 'Sem Título'
+    let artist = urlArtist || 'Desconhecido'
+
+    for (const line of lines.slice(0, 5)) {
+      if (line.startsWith('# ')) {
+        title = line.replace('# ', '').trim()
+        break
+      }
     }
 
-    let key = rawKey.trim()
+    // Tenta achar o tom no texto
+    let key = 'C'
+    const toneMatch = markdownContent.match(/(?:Tom|Tone):\s*([A-G][#b]?m?)/i) || markdownContent.match(/\b([A-G][#b]?m?)\b/)
+    if (toneMatch) {
+      key = toneMatch[1]
+    }
     if (key.endsWith('M')) {
       key = key.slice(0, -1) + 'm'
-    }
-
-    if (!title || !content) {
-      return NextResponse.json({ error: 'Não foi possível extrair o conteúdo da cifra desta página.' }, { status: 400 })
     }
 
     return NextResponse.json({
       title,
       artist,
       key,
-      content
+      content: markdownContent
     })
 
   } catch (error: any) {
