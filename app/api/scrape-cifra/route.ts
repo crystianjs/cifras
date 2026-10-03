@@ -18,16 +18,24 @@ export async function POST(request: Request) {
         .join(' ')
     }
 
-    let response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
-      }
-    })
-
     let html = ''
-    if (!response.ok) {
+    try {
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+        }
+      })
+      if (response.ok) {
+        html = await response.text()
+      }
+    } catch (e) {
+      // Ignora erro do fetch direto para tentar o proxy logo abaixo
+    }
+
+    // Se o fetch direto falhou ou veio vazio, usa o proxy AllOrigins
+    if (!html) {
       const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`
       const proxyResponse = await fetch(proxyUrl)
       
@@ -37,8 +45,10 @@ export async function POST(request: Request) {
       
       const proxyData = await proxyResponse.json()
       html = proxyData.contents
-    } else {
-      html = await response.text()
+    }
+
+    if (!html) {
+      return NextResponse.json({ error: 'Não foi possível acessar a página da cifra.' }, { status: 400 })
     }
 
     const $ = cheerio.load(html)
