@@ -8,25 +8,21 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'URL inválida. Insira um link válido.' }, { status: 400 })
     }
 
-    // Extrai informações úteis da URL (ex: /simplificada/d/diante-do-trono/...)
+    // Extrai informações úteis da URL para preencher título e artista automaticamente de forma limpa
     const urlObj = new URL(url)
     const urlSegments = urlObj.pathname.split('/').filter(Boolean)
     
-    // Tenta adivinhar o artista ou nome da música pelas últimas partes da URL
     let defaultTitle = 'Sem Título'
     let defaultArtist = 'Desconhecido'
 
     if (urlSegments.length > 0) {
-      // O último segmento costuma ser o nome da música
       const lastSegment = urlSegments[urlSegments.length - 1]
       defaultTitle = lastSegment
         .split('-')
         .map(word => word.charAt(0).toUpperCase() + word.slice(1))
         .join(' ')
 
-      // Se houver mais segmentos, tenta achar um artista provável
       if (urlSegments.length > 1) {
-        // Geralmente o penúltimo ou antepenúltimo pode ser o artista
         const artistCandidate = urlSegments[urlSegments.length - 2]
         if (artistCandidate.length > 1 && artistCandidate !== 'simplificada' && artistCandidate !== 'cifra') {
           defaultArtist = artistCandidate
@@ -39,7 +35,7 @@ export async function POST(request: Request) {
 
     let htmlContent = ''
     
-    // Tenta via AllOrigins primeiro
+    // Tenta via AllOrigins
     try {
       const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`
       const res = await fetch(proxyUrl)
@@ -48,11 +44,11 @@ export async function POST(request: Request) {
         htmlContent = data.contents || ''
       }
     } catch (e) {
-      // Ignora erro do proxy
+      // Ignora erro de rede do proxy
     }
 
-    // Se falhar, tenta via Jina AI
-    if (!htmlContent || htmlContent.length < 100) {
+    // Se falhar ou vier bloqueado, tenta via Jina AI Reader
+    if (!htmlContent || htmlContent.length < 100 || htmlContent.includes('Cloudflare') || htmlContent.includes('Access Denied')) {
       const jinaUrl = `https://r.jina.ai/${url}`
       const jinaResponse = await fetch(jinaUrl, {
         headers: { 'Accept': 'application/json' }
@@ -63,13 +59,13 @@ export async function POST(request: Request) {
       }
     }
 
-    if (!htmlContent || htmlContent.length < 50) {
+    // Se o site de destino bloquear totalmente a leitura por segurança da nuvem, avisamos para usar o Modo Manual perfeitamente alinhado
+    if (!htmlContent || htmlContent.length < 50 || htmlContent.includes('Cloudflare')) {
       return NextResponse.json({ 
-        error: 'Este site possui proteção rígida contra leitura automática. Use a aba "Modo Manual" para colar a cifra instantaneamente.' 
+        error: 'Este site possui proteção contra automação na nuvem. Use o Modo Manual para colar a sua cifra com formatação perfeita (acordes em cima, letra embaixo).' 
       }, { status: 400 })
     }
 
-    // Procura título no conteúdo markdown se houver
     let title = defaultTitle
     let artist = defaultArtist
 
@@ -84,7 +80,6 @@ export async function POST(request: Request) {
       }
     }
 
-    // Detecta o tom básico se houver menção
     let key = 'C'
     const toneMatch = htmlContent.match(/(?:Tom|Tone|Key):\s*([A-G][#b]?m?)/i)
     if (toneMatch) {
