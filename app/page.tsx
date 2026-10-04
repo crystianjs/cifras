@@ -15,7 +15,7 @@ interface Album {
   id: string
   name: string
   description: string
-  songs: string[] // IDs das músicas
+  songs: string[]
 }
 
 const NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
@@ -45,22 +45,20 @@ export default function Home(): React.JSX.Element {
   const [selectedArtistFilter, setSelectedArtistFilter] = useState('')
   
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
-  const [activeMenu, setActiveMenu] = useState('Scores') // 'Scores' | 'Albums' | 'Artists'
+  const [activeMenu, setActiveMenu] = useState('Scores')
 
-  // Controle de visualização mobile (alterna entre 'list' e 'viewer')
+  // Controle explícito de visualização mobile: 'list' (mostra lista) ou 'viewer' (mostra cifra em tela cheia)
   const [mobileView, setMobileView] = useState<'list' | 'viewer'>('list')
 
   const [isImportModalOpen, setIsImportModalOpen] = useState(false)
   const [importMode, setImportMode] = useState<'online' | 'manual'>('online')
   
-  // Modals extras
   const [isAlbumModalOpen, setIsAlbumModalOpen] = useState(false)
   const [newAlbumName, setNewAlbumName] = useState('')
   const [newAlbumDesc, setNewAlbumDesc] = useState('')
   const [isAddSongToAlbumOpen, setIsAddSongToAlbumOpen] = useState(false)
   const [songToAddId, setSongToAddId] = useState('')
 
-  // Campos de Formulário Manual/Online
   const [manualTitle, setManualTitle] = useState('')
   const [manualArtist, setManualArtist] = useState('')
   const [manualKey, setManualKey] = useState('C')
@@ -77,7 +75,7 @@ export default function Home(): React.JSX.Element {
 
   const [isAutoScrolling, setIsAutoScrolling] = useState(false)
   const [scrollSpeed, setScrollSpeed] = useState(3)
-  const [chordColor, setChordColor] = useState<'text-red-600' | 'text-blue-600' | 'text-green-600' | 'text-yellow-600'>('text-red-600')
+  const [chordColor] = useState<'text-red-600' | 'text-blue-600' | 'text-green-600' | 'text-yellow-600'>('text-red-600')
   const scrollContainerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -141,11 +139,11 @@ export default function Home(): React.JSX.Element {
     setSelectedSong(song)
     initEditState(song)
     setIsEditing(false)
-    setMobileView('viewer') // No celular, abre a página de visualização
+    setMobileView('viewer') // Força a tela de visualização no celular
   }
 
   const handleBackToList = () => {
-    setMobileView('list')
+    setMobileView('list') // Retorna para a lista no celular
     setIsAutoScrolling(false)
   }
 
@@ -201,7 +199,7 @@ export default function Home(): React.JSX.Element {
       setImportMode('manual')
       alert(`Sucesso! Puxamos "${data.title}" de ${data.artist} (Tom: ${data.key}). Revise e clique em Salvar Cifra!`)
     } catch (err: any) {
-      alert('Erro: ' + err.message + '. Certifique-se de que o backend suporta essa URL ou use o Modo Manual.')
+      alert('Erro: ' + err.message)
     } finally {
       setIsLoadingOnline(false)
     }
@@ -391,7 +389,7 @@ export default function Home(): React.JSX.Element {
   return (
     <main className="h-screen w-screen overflow-hidden bg-gray-100 text-gray-900 flex flex-col font-sans relative">
       
-      {/* Navbar Superior Completa & Responsiva */}
+      {/* Navbar Superior */}
       <header className="bg-[#2D68C4] text-white px-4 md:px-6 py-3 flex justify-between items-center shadow-md shrink-0 z-20">
         <div className="flex items-center gap-3">
           <button 
@@ -455,7 +453,7 @@ export default function Home(): React.JSX.Element {
                   type="text" 
                   value={newAlbumName} 
                   onChange={(e) => setNewAlbumName(e.target.value)} 
-                  placeholder="Ex: Culto de Domingo, Acústico..." 
+                  placeholder="Ex: Culto de Domingo..." 
                   className="w-full border px-3 py-2 rounded text-sm mt-1 text-gray-800"
                 />
               </div>
@@ -464,7 +462,7 @@ export default function Home(): React.JSX.Element {
                 <textarea 
                   value={newAlbumDesc} 
                   onChange={(e) => setNewAlbumDesc(e.target.value)} 
-                  placeholder="Detalhes ou observações do repertório..." 
+                  placeholder="Detalhes ou observações..." 
                   className="w-full border px-3 py-2 rounded text-sm mt-1 text-gray-800"
                   rows={3}
                 />
@@ -521,7 +519,7 @@ export default function Home(): React.JSX.Element {
                 onClick={() => setImportMode('online')}
                 className={`flex-1 py-3 text-sm font-semibold border-b-2 transition ${importMode === 'online' ? 'border-[#2D68C4] text-[#2D68C4] bg-white' : 'border-transparent text-gray-600 hover:bg-gray-100'}`}
               >
-                Modo Online (Cifra Club, Bananacifra, etc.)
+                Modo Online
               </button>
               <button 
                 onClick={() => setImportMode('manual')}
@@ -534,12 +532,12 @@ export default function Home(): React.JSX.Element {
             <div className="p-6 flex flex-col gap-4 max-h-[75vh] overflow-y-auto">
               {importMode === 'online' ? (
                 <form onSubmit={handleFetchOnlineCifra} className="flex flex-col gap-4">
-                  <p className="text-xs text-gray-500">Cole o link (URL) de sites compatíveis (Cifra Club, Bananacifra, etc.). Nosso backend processará a extração sem barreiras de firewall.</p>
+                  <p className="text-xs text-gray-500">Cole o link (URL) de sites compatíveis.</p>
                   <div className="flex flex-col gap-1">
                     <label className="text-xs font-bold text-gray-700">URL da Cifra</label>
                     <input 
                       type="url" 
-                      placeholder="Ex: https://www.cifraclub.com.br/... ou https://www.bananacifra.com.br/..." 
+                      placeholder="Ex: https://www.cifraclub.com.br/..." 
                       value={cifraUrl} 
                       onChange={(e) => setCifraUrl(e.target.value)} 
                       className="border px-3 py-2 rounded text-sm text-gray-800 font-mono"
@@ -615,10 +613,10 @@ export default function Home(): React.JSX.Element {
         </div>
       )}
 
-      {/* Conteúdo Principal com Responsividade Mobile (Alterna entre Lista e Visualizador) */}
-      <div className="flex flex-1 overflow-hidden flex-col md:flex-row">
+      {/* Conteúdo Principal com Alternância Baseada no Estado mobileView */}
+      <div className="flex flex-1 overflow-hidden">
         
-        {/* Painel Esquerdo (Lista) - No celular some se mobileView for 'viewer' */}
+        {/* Painel Esquerdo (Lista) */}
         <aside className={`w-full md:w-96 bg-white border-r border-gray-200 flex flex-col shadow-sm shrink-0 h-full ${mobileView === 'viewer' ? 'hidden md:flex' : 'flex'}`}>
           {activeMenu === 'Albums' && !selectedAlbum ? (
             <div className="flex flex-col h-full">
@@ -648,7 +646,6 @@ export default function Home(): React.JSX.Element {
                   <div className="flex items-center justify-between bg-blue-50 p-2 rounded border border-blue-200">
                     <div>
                       <span className="text-xs text-blue-800 font-bold block">Álbum: {selectedAlbum.name}</span>
-                      <span className="text-[10px] text-gray-600">{selectedAlbum.description}</span>
                     </div>
                     <div className="flex gap-2">
                       <button onClick={() => setIsAddSongToAlbumOpen(true)} className="text-xs bg-[#2D68C4] text-white px-2 py-1 rounded font-semibold">+ Música</button>
@@ -710,12 +707,12 @@ export default function Home(): React.JSX.Element {
           )}
         </aside>
 
-        {/* Painel Direito (Visualizador) - No celular só aparece se mobileView for 'viewer' */}
-        <section id="song-viewer-container" className={`flex-1 p-3 md:p-6 overflow-y-auto bg-gray-50 flex justify-center h-full ${mobileView === 'list' ? 'hidden md:flex' : 'flex'}`}>
+        {/* Painel Direito (Visualizador / Nova Página no Celular) */}
+        <section id="song-viewer-container" className={`flex-1 p-3 md:p-6 overflow-y-auto bg-gray-50 flex justify-center h-full w-full ${mobileView === 'list' ? 'hidden md:flex' : 'flex'}`}>
           {selectedSong ? (
             <div className="w-full max-w-4xl bg-white p-4 md:p-8 rounded-xl border border-gray-200 shadow-sm h-fit flex flex-col">
               
-              {/* Botão de Voltar exclusivo para Celular */}
+              {/* Botão Voltar exclusivo para telas menores */}
               <div className="md:hidden mb-3">
                 <button 
                   onClick={handleBackToList}
@@ -778,7 +775,6 @@ export default function Home(): React.JSX.Element {
                       <button onClick={() => setIsEditing(true)} className="bg-blue-600 text-white px-3 py-1.5 rounded text-xs font-semibold">Editar</button>
                       <button onClick={handleFullscreen} className="bg-gray-700 text-white px-3 py-1.5 rounded text-xs font-semibold hidden md:inline-block">Tela Cheia</button>
                       <button onClick={handleDownloadSong} className="bg-gray-800 text-white px-3 py-1.5 rounded text-xs font-semibold">Baixar</button>
-                      {/* Botão de Exclusão com fundo vermelho e ícone de lixeira em branco */}
                       <button 
                         onClick={handleDeleteSong} 
                         className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded text-xs font-semibold transition flex items-center gap-1 shadow-sm"
@@ -812,7 +808,7 @@ export default function Home(): React.JSX.Element {
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center text-gray-400 p-6 text-center">
-              <p className="text-sm md:text-base font-medium">Selecione uma cifra na lista ao lado ou importe uma nova</p>
+              <p className="text-sm md:text-base font-medium">Selecione uma cifra na lista</p>
             </div>
           )}
         </section>
