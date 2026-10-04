@@ -4,12 +4,11 @@ export async function POST(request: Request) {
   try {
     const { url } = await request.json()
 
-    // Validação genérica: aceita qualquer URL que comece com http ou https
     if (!url || (!url.startsWith('http://') && !url.startsWith('https://'))) {
       return NextResponse.json({ error: 'URL inválida. Insira um link válido.' }, { status: 400 })
     }
 
-    // Extrai o domínio ou parte do nome para tentar inferir o artista/título se possível
+    // Extrai o Artista da URL se possível
     const urlObj = new URL(url)
     const urlParts = urlObj.pathname.split('/').filter(Boolean)
     let defaultArtist = ''
@@ -20,31 +19,45 @@ export async function POST(request: Request) {
         .join(' ')
     }
 
-    // Utiliza o Jina AI Reader como proxy universal de extração em Markdown para contornar bloqueios de Cloudflare
-    const jinaUrl = `https://r.jina.ai/${url}`
-    const jinaResponse = await fetch(jinaUrl, {
-      headers: {
-        'Accept': 'application/json',
-        'X-With-Generated-Alt': 'true'
+    // Estratégia de contorno: Utiliza múltiplos fallbacks de fetch (AllOrigins e Jina)
+    let htmlContent = ''
+    
+    // Tenta primeiro via AllOrigins (bom para pegar o HTML cru)
+    try {
+      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`
+      const res = await fetch(proxyUrl)
+      if (res.ok) {
+        const data = await res.json()
+        htmlContent = data.contents || ''
       }
-    })
-
-    if (!jinaResponse.ok) {
-      return NextResponse.json({ error: 'Não foi possível extrair o conteúdo desta página. Tente colar a cifra manualmente.' }, { status: 400 })
+    } catch (e) {
+      // Ignora e tenta o próximo
     }
 
-    const jinaData = await jinaResponse.json()
-    const markdownContent = jinaData.data?.content || ''
-
-    if (!markdownContent || markdownContent.length < 30) {
-      return NextResponse.json({ error: 'O site de destino bloqueou a leitura automática. Use o modo manual.' }, { status: 400 })
+    // Se o AllOrigins falhou ou veio vazio, tenta o Jina AI
+    if (!htmlContent || htmlContent.length < 100) {
+      const jinaUrl = `https://r.jina.ai/${url}`
+      const jinaResponse = await fetch(jinaUrl, {
+        headers: { 'Accept': 'application/json' }
+      })
+      if (jinaResponse.ok) {
+        const jinaData = await jinaResponse.json()
+        htmlContent = jinaData.data?.content || ''
+      }
     }
 
-    // Extrai Título do Markdown se houver
-    const lines = markdownContent.split('\n').map((l: string) => l.trim()).filter(Boolean)
+    if (!htmlContent || htmlContent.length < 50) {
+      return NextResponse.json({ 
+        error: 'Este site possui proteção rígida contra leitura automática (Cloudflare). Use a aba "Modo Manual" para colar a cifra instantaneamente.' 
+      }, { status: 400 })
+    }
+
+    // Limpa o conteúdo básico extraído
     let title = 'Sem Título'
     let artist = defaultArtist || 'Desconhecido'
 
+    // Tenta extrair título das primeiras linhas se for markdown do Jina
+    const lines = htmlContent.split('\n').map((l: string) => l.trim()).filter(Boolean)
     for (const line of lines.slice(0, 5)) {
       if (line.startsWith('# ')) {
         title = line.replace('# ', '').trim()
@@ -52,21 +65,11 @@ export async function POST(request: Request) {
       }
     }
 
-    // Detecta o tom de forma flexível
-    let key = 'C'
-    const toneMatch = markdownContent.match(/(?:Tom|Tone|Key):\s*([A-G][#b]?m?)/i) || markdownContent.match(/\b([A-G][#b]?m?)\b/)
-    if (toneMatch) {
-      key = toneMatch[1]
-    }
-    if (key.endsWith('M')) {
-      key = key.slice(0, -1) + 'm'
-    }
-
     return NextResponse.json({
       title,
       artist,
-      key,
-      content: markdownContent
+      key: 'C',
+      content: htmlContent
     })
 
   } catch (error: any) {
