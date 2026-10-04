@@ -1,5 +1,50 @@
 import { NextResponse } from 'next/server'
 
+// Função auxiliar para formatar e alinhar a cifra de forma limpa
+function formatarCifraAutomatica(rawContent: string): string {
+  if (!rawContent) return ''
+
+  // Se o conteúdo veio em Markdown do Jina, limpa tags desnecessárias
+  let lines = rawContent.split('\n').map(l => l.trim())
+  
+  const linhasFormatadas: string[] = []
+  let ultimoEraAcorde = false
+
+  for (let i = 0; i < lines.length; i++) {
+    let linha = lines[i]
+
+    // Ignora linhas vazias repetidas excessivas
+    if (!linha) {
+      if (linhasFormatadas[linhasFormatadas.length - 1] !== '') {
+        linhasFormatadas.push('')
+      }
+      continue
+    }
+
+    // Detecta se a linha é predominantemente composta por acordes (ex: A, D/F#, Bm7, G, C#m)
+    // Uma linha de acorde geralmente tem palavras curtas separadas por espaços e sem pontuação longa
+    const palavras = linha.split(/\s+/)
+    const ehLinhaDeAcordes = palavras.length > 0 && palavras.every(p => 
+      /^[A-G](?:#|b)?(?:m|maj|min|dim|aug|sus|add)?(?:\/[A-G](?:#|b)?)?[0-9]*$/.test(p) || p === '|' || p === 'x'
+    )
+
+    if (ehLinhaDeAcordes) {
+      // Garante espaçamento limpo entre os acordes
+      linhasFormatadas.push(palavras.join('   '))
+      ultimoEraAcorde = true
+    } else {
+      // Se a linha anterior era um acorde e esta é letra, adiciona um respiro se necessário
+      if (ultimoEraAcorde && !linha.startsWith('[')) {
+        // Mantém junto para o acorde ficar em cima da letra
+      }
+      linhasFormatadas.push(linha)
+      ultimoEraAcorde = false
+    }
+  }
+
+  return linhasFormatadas.join('\n').trim()
+}
+
 export async function POST(request: Request) {
   try {
     const { url } = await request.json()
@@ -8,7 +53,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'URL inválida. Insira um link válido.' }, { status: 400 })
     }
 
-    // Extrai informações úteis da URL para preencher título e artista automaticamente de forma limpa
     const urlObj = new URL(url)
     const urlSegments = urlObj.pathname.split('/').filter(Boolean)
     
@@ -43,12 +87,10 @@ export async function POST(request: Request) {
         const data = await res.json()
         htmlContent = data.contents || ''
       }
-    } catch (e) {
-      // Ignora erro de rede do proxy
-    }
+    } catch (e) {}
 
-    // Se falhar ou vier bloqueado, tenta via Jina AI Reader
-    if (!htmlContent || htmlContent.length < 100 || htmlContent.includes('Cloudflare') || htmlContent.includes('Access Denied')) {
+    // Se falhar, tenta via Jina AI
+    if (!htmlContent || htmlContent.length < 100 || htmlContent.includes('Cloudflare')) {
       const jinaUrl = `https://r.jina.ai/${url}`
       const jinaResponse = await fetch(jinaUrl, {
         headers: { 'Accept': 'application/json' }
@@ -59,12 +101,14 @@ export async function POST(request: Request) {
       }
     }
 
-    // Se o site de destino bloquear totalmente a leitura por segurança da nuvem, avisamos para usar o Modo Manual perfeitamente alinhado
     if (!htmlContent || htmlContent.length < 50 || htmlContent.includes('Cloudflare')) {
       return NextResponse.json({ 
-        error: 'Este site possui proteção contra automação na nuvem. Use o Modo Manual para colar a sua cifra com formatação perfeita (acordes em cima, letra embaixo).' 
+        error: 'Este site possui proteção contra automação. Use o Modo Manual para colar a sua cifra com formatação perfeita.' 
       }, { status: 400 })
     }
+
+    // Aplica a formatação inteligente para alinhar os acordes em cima e o texto embaixo
+    const contentFormatted = formatarCifraAutomatica(htmlContent)
 
     let title = defaultTitle
     let artist = defaultArtist
@@ -91,7 +135,7 @@ export async function POST(request: Request) {
       title,
       artist,
       key,
-      content: htmlContent
+      content: contentFormatted
     })
 
   } catch (error: any) {
