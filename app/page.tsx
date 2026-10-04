@@ -47,7 +47,6 @@ export default function Home(): React.JSX.Element {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [activeMenu, setActiveMenu] = useState('Scores')
 
-  // Controle explícito de visualização mobile: 'list' (mostra lista) ou 'viewer' (mostra cifra em tela cheia)
   const [mobileView, setMobileView] = useState<'list' | 'viewer'>('list')
 
   const [isImportModalOpen, setIsImportModalOpen] = useState(false)
@@ -139,11 +138,11 @@ export default function Home(): React.JSX.Element {
     setSelectedSong(song)
     initEditState(song)
     setIsEditing(false)
-    setMobileView('viewer') // Força a tela de visualização no celular
+    setMobileView('viewer')
   }
 
   const handleBackToList = () => {
-    setMobileView('list') // Retorna para a lista no celular
+    setMobileView('list')
     setIsAutoScrolling(false)
   }
 
@@ -404,16 +403,25 @@ export default function Home(): React.JSX.Element {
           </button>
           <h1 className="text-lg md:text-xl font-bold tracking-wide">Meu Cifras</h1>
           
+          {/* Botões do Header com Amarelo quando Ativos */}
           <nav className="hidden md:flex items-center gap-1 ml-6">
             <button 
               onClick={() => { setActiveMenu('Scores'); setSelectedAlbum(null); }}
-              className={`px-3 py-1.5 rounded text-sm font-semibold transition ${activeMenu === 'Scores' ? 'bg-blue-700 text-white' : 'hover:bg-blue-600 text-blue-100'}`}
+              className={`px-3 py-1.5 rounded text-sm font-bold transition ${
+                activeMenu === 'Scores' 
+                  ? 'bg-yellow-400 text-gray-900 shadow-sm' 
+                  : 'hover:bg-blue-600 text-blue-100'
+              }`}
             >
               Cifras
             </button>
             <button 
               onClick={() => { setActiveMenu('Albums'); }}
-              className={`px-3 py-1.5 rounded text-sm font-semibold transition ${activeMenu === 'Albums' ? 'bg-blue-700 text-white' : 'hover:bg-blue-600 text-blue-100'}`}
+              className={`px-3 py-1.5 rounded text-sm font-bold transition ${
+                activeMenu === 'Albums' 
+                  ? 'bg-yellow-400 text-gray-900 shadow-sm' 
+                  : 'hover:bg-blue-600 text-blue-100'
+              }`}
             >
               Álbum
             </button>
@@ -424,7 +432,7 @@ export default function Home(): React.JSX.Element {
           {activeMenu === 'Albums' && (
             <button 
               onClick={() => setIsAlbumModalOpen(true)}
-              className="bg-blue-700 hover:bg-blue-800 text-white px-3 py-1.5 rounded shadow text-xs md:text-sm font-semibold transition flex items-center gap-1"
+              className="bg-yellow-400 hover:bg-yellow-500 text-gray-900 px-3 py-1.5 rounded shadow text-xs md:text-sm font-bold transition flex items-center gap-1"
             >
               <span>+ Novo Álbum</span>
             </button>
@@ -598,13 +606,13 @@ export default function Home(): React.JSX.Element {
             <nav className="flex-1 py-4 overflow-y-auto space-y-1 px-3">
               <button
                 onClick={() => { setActiveMenu('Scores'); setSelectedAlbum(null); setIsSidebarOpen(false); }}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-100"
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-semibold ${activeMenu === 'Scores' ? 'bg-yellow-100 text-yellow-800 font-bold' : 'text-gray-700 hover:bg-gray-100'}`}
               >
                 <span>Cifras</span>
               </button>
               <button
                 onClick={() => { setActiveMenu('Albums'); setIsSidebarOpen(false); }}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-100"
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-semibold ${activeMenu === 'Albums' ? 'bg-yellow-100 text-yellow-800 font-bold' : 'text-gray-700 hover:bg-gray-100'}`}
               >
                 <span>Álbum</span>
               </button>
@@ -613,7 +621,7 @@ export default function Home(): React.JSX.Element {
         </div>
       )}
 
-      {/* Conteúdo Principal com Alternância Baseada no Estado mobileView */}
+      {/* Conteúdo Principal */}
       <div className="flex flex-1 overflow-hidden">
         
         {/* Painel Esquerdo (Lista) */}
@@ -707,12 +715,11 @@ export default function Home(): React.JSX.Element {
           )}
         </aside>
 
-        {/* Painel Direito (Visualizador / Nova Página no Celular) */}
+        {/* Painel Direito (Visualizador) */}
         <section id="song-viewer-container" className={`flex-1 p-3 md:p-6 overflow-y-auto bg-gray-50 flex justify-center h-full w-full ${mobileView === 'list' ? 'hidden md:flex' : 'flex'}`}>
           {selectedSong ? (
             <div className="w-full max-w-4xl bg-white p-4 md:p-8 rounded-xl border border-gray-200 shadow-sm h-fit flex flex-col">
               
-              {/* Botão Voltar exclusivo para telas menores */}
               <div className="md:hidden mb-3">
                 <button 
                   onClick={handleBackToList}
@@ -781,7 +788,7 @@ export default function Home(): React.JSX.Element {
                         title="Excluir Cifra"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2,2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                         </svg>
                         <span>Excluir</span>
                       </button>
