@@ -4,23 +4,23 @@ export async function POST(request: Request) {
   try {
     const { url } = await request.json()
 
-    if (!url || !url.includes('cifraclub.com.br')) {
-      return NextResponse.json({ error: 'URL inválida do Cifra Club.' }, { status: 400 })
+    // Validação genérica: aceita qualquer URL que comece com http ou https
+    if (!url || (!url.startsWith('http://') && !url.startsWith('https://'))) {
+      return NextResponse.json({ error: 'URL inválida. Insira um link válido.' }, { status: 400 })
     }
 
-    // Extrai o Artista direto da URL
-    const urlParts = new URL(url).pathname.split('/').filter(Boolean)
-    let urlArtist = ''
+    // Extrai o domínio ou parte do nome para tentar inferir o artista/título se possível
+    const urlObj = new URL(url)
+    const urlParts = urlObj.pathname.split('/').filter(Boolean)
+    let defaultArtist = ''
     if (urlParts.length >= 1) {
-      urlArtist = urlParts[0]
+      defaultArtist = urlParts[0]
         .split('-')
         .map(word => word.charAt(0).toUpperCase() + word.slice(1))
         .join(' ')
     }
 
-    // Usando a API pública do JSDelivr/AllOrigins com parâmetros alternativos ou rotas de API do próprio Cifra Club se houver,
-    // ou fallback inteligente estruturado para ignorar o bloqueio de Cloudflare simulando um Browser headless leve via fetch de mirror.
-    // Como alternativa robusta definitiva, podemos usar o serviço "r.jina.ai" que extrai conteúdo limpo em markdown de qualquer URL protegida por Cloudflare!
+    // Utiliza o Jina AI Reader como proxy universal de extração em Markdown para contornar bloqueios de Cloudflare
     const jinaUrl = `https://r.jina.ai/${url}`
     const jinaResponse = await fetch(jinaUrl, {
       headers: {
@@ -30,21 +30,20 @@ export async function POST(request: Request) {
     })
 
     if (!jinaResponse.ok) {
-      return NextResponse.json({ error: 'Não foi possível contornar a segurança do Cifra Club. Tente colar a cifra manualmente.' }, { status: 400 })
+      return NextResponse.json({ error: 'Não foi possível extrair o conteúdo desta página. Tente colar a cifra manualmente.' }, { status: 400 })
     }
 
     const jinaData = await jinaResponse.json()
     const markdownContent = jinaData.data?.content || ''
 
-    if (!markdownContent || markdownContent.length < 50) {
-      return NextResponse.json({ error: 'O sistema de segurança bloqueou o conteúdo. Use a aba "Modo Manual / Revisão".' }, { status: 400 })
+    if (!markdownContent || markdownContent.length < 30) {
+      return NextResponse.json({ error: 'O site de destino bloqueou a leitura automática. Use o modo manual.' }, { status: 400 })
     }
 
-    // Extrai Título e Artista do texto markdown retornado
-    // O Jina AI costuma trazer o título no início
-    const lines = markdownContent.split('\n').map((l: string) => l.trim()).filter(Boolean)
+    // Extrai Título do Markdown se houver
+    const lines = markdownContent.split('\n').map((l: string) => l.trims?.() || l.trim()).filter(Boolean)
     let title = 'Sem Título'
-    let artist = urlArtist || 'Desconhecido'
+    let artist = defaultArtist || 'Desconhecido'
 
     for (const line of lines.slice(0, 5)) {
       if (line.startsWith('# ')) {
@@ -53,9 +52,9 @@ export async function POST(request: Request) {
       }
     }
 
-    // Tenta achar o tom no texto
+    // Detecta o tom de forma flexível
     let key = 'C'
-    const toneMatch = markdownContent.match(/(?:Tom|Tone):\s*([A-G][#b]?m?)/i) || markdownContent.match(/\b([A-G][#b]?m?)\b/)
+    const toneMatch = markdownContent.match(/(?:Tom|Tone|Key):\s*([A-G][#b]?m?)/i) || markdownContent.match(/\b([A-G][#b]?m?)\b/)
     if (toneMatch) {
       key = toneMatch[1]
     }
