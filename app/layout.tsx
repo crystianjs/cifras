@@ -5,7 +5,7 @@ export const metadata: Metadata = {
   title: 'Cifras',
   description: 'Seu gerenciador e visualizador de cifras e músicas',
   icons: {
-    icon: '/favicon.ico',
+    icon: '../favicon.ico',
   },
   appleWebApp: {
     capable: true,
