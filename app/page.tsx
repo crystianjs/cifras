@@ -47,6 +47,9 @@ export default function Home(): React.JSX.Element {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [activeMenu, setActiveMenu] = useState('Scores') // 'Scores' | 'Albums' | 'Artists'
 
+  // Controle de visualização mobile (alterna entre 'list' e 'viewer')
+  const [mobileView, setMobileView] = useState<'list' | 'viewer'>('list')
+
   const [isImportModalOpen, setIsImportModalOpen] = useState(false)
   const [importMode, setImportMode] = useState<'online' | 'manual'>('online')
   
@@ -138,6 +141,12 @@ export default function Home(): React.JSX.Element {
     setSelectedSong(song)
     initEditState(song)
     setIsEditing(false)
+    setMobileView('viewer') // No celular, abre a página de visualização
+  }
+
+  const handleBackToList = () => {
+    setMobileView('list')
+    setIsAutoScrolling(false)
   }
 
   const handleSaveNewSong = async () => {
@@ -280,6 +289,7 @@ export default function Home(): React.JSX.Element {
     } else {
       alert('Cifra excluída com sucesso!')
       setSelectedSong(null)
+      setMobileView('list')
       fetchSongs()
     }
   }
@@ -381,7 +391,7 @@ export default function Home(): React.JSX.Element {
   return (
     <main className="h-screen w-screen overflow-hidden bg-gray-100 text-gray-900 flex flex-col font-sans relative">
       
-      {/* Navbar Superior Completa & Responsiva (Com ícone de 3 barras para abrir cifras e álbum, sem emojis) */}
+      {/* Navbar Superior Completa & Responsiva */}
       <header className="bg-[#2D68C4] text-white px-4 md:px-6 py-3 flex justify-between items-center shadow-md shrink-0 z-20">
         <div className="flex items-center gap-3">
           <button 
@@ -497,7 +507,7 @@ export default function Home(): React.JSX.Element {
         </div>
       )}
 
-      {/* Modal Importar Cifra (Cifra Club, Bananacifra, etc.) */}
+      {/* Modal Importar Cifra */}
       {isImportModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="bg-white w-full max-w-xl rounded-xl shadow-2xl flex flex-col overflow-hidden">
@@ -578,7 +588,7 @@ export default function Home(): React.JSX.Element {
         </div>
       )}
 
-      {/* Drawer Menu Lateral (Aberto pelas Três Barras) */}
+      {/* Drawer Menu Lateral */}
       {isSidebarOpen && (
         <div className="fixed inset-0 z-50 flex">
           <div className="fixed inset-0 bg-black/50" onClick={() => setIsSidebarOpen(false)} />
@@ -605,11 +615,11 @@ export default function Home(): React.JSX.Element {
         </div>
       )}
 
-      {/* Conteúdo Principal Flexível e Responsivo */}
+      {/* Conteúdo Principal com Responsividade Mobile (Alterna entre Lista e Visualizador) */}
       <div className="flex flex-1 overflow-hidden flex-col md:flex-row">
         
-        {/* Painel Esquerdo (Lista / Filtros) */}
-        <aside className="w-full md:w-96 bg-white border-r border-gray-200 flex flex-col shadow-sm shrink-0 h-1/3 md:h-full">
+        {/* Painel Esquerdo (Lista) - No celular some se mobileView for 'viewer' */}
+        <aside className={`w-full md:w-96 bg-white border-r border-gray-200 flex flex-col shadow-sm shrink-0 h-full ${mobileView === 'viewer' ? 'hidden md:flex' : 'flex'}`}>
           {activeMenu === 'Albums' && !selectedAlbum ? (
             <div className="flex flex-col h-full">
               <div className="p-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
@@ -700,11 +710,24 @@ export default function Home(): React.JSX.Element {
           )}
         </aside>
 
-        {/* Painel Direito (Visualizador / Editor da Cifra) */}
-        <section id="song-viewer-container" className="flex-1 p-3 md:p-6 overflow-y-auto bg-gray-50 flex justify-center h-2/3 md:h-full">
+        {/* Painel Direito (Visualizador) - No celular só aparece se mobileView for 'viewer' */}
+        <section id="song-viewer-container" className={`flex-1 p-3 md:p-6 overflow-y-auto bg-gray-50 flex justify-center h-full ${mobileView === 'list' ? 'hidden md:flex' : 'flex'}`}>
           {selectedSong ? (
             <div className="w-full max-w-4xl bg-white p-4 md:p-8 rounded-xl border border-gray-200 shadow-sm h-fit flex flex-col">
               
+              {/* Botão de Voltar exclusivo para Celular */}
+              <div className="md:hidden mb-3">
+                <button 
+                  onClick={handleBackToList}
+                  className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold px-3 py-1.5 rounded-md text-xs flex items-center gap-1.5 transition"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+                  </svg>
+                  <span>Voltar</span>
+                </button>
+              </div>
+
               <div className="border-b border-gray-200 pb-4 mb-4 flex flex-wrap justify-between items-center gap-4">
                 <div className="flex-1">
                   {isEditing ? (
@@ -755,7 +778,17 @@ export default function Home(): React.JSX.Element {
                       <button onClick={() => setIsEditing(true)} className="bg-blue-600 text-white px-3 py-1.5 rounded text-xs font-semibold">Editar</button>
                       <button onClick={handleFullscreen} className="bg-gray-700 text-white px-3 py-1.5 rounded text-xs font-semibold hidden md:inline-block">Tela Cheia</button>
                       <button onClick={handleDownloadSong} className="bg-gray-800 text-white px-3 py-1.5 rounded text-xs font-semibold">Baixar</button>
-                      <button onClick={handleDeleteSong} className="bg-red-600 text-white px-3 py-1.5 rounded text-xs font-semibold">🗑</button>
+                      {/* Botão de Exclusão com fundo vermelho e ícone de lixeira em branco */}
+                      <button 
+                        onClick={handleDeleteSong} 
+                        className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded text-xs font-semibold transition flex items-center gap-1 shadow-sm"
+                        title="Excluir Cifra"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                        <span>Excluir</span>
+                      </button>
                     </>
                   )}
                 </div>
@@ -770,7 +803,7 @@ export default function Home(): React.JSX.Element {
               ) : (
                 <div 
                   ref={scrollContainerRef}
-                  className="bg-white p-2 rounded-lg leading-snug overflow-x-auto font-mono max-h-[50vh] md:max-h-[55vh] overflow-y-auto border border-dashed border-gray-200"
+                  className="bg-white p-2 rounded-lg leading-snug overflow-x-auto font-mono max-h-[60vh] md:max-h-[55vh] overflow-y-auto border border-dashed border-gray-200"
                 >
                   {renderFormattedContent(selectedSong.content)}
                 </div>

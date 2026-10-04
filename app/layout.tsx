@@ -19,7 +19,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
-  viewportFit: 'cover', // Permite ocupar a tela inteira em celulares (inclusive notch/ilha dinâmica)
+  viewportFit: 'cover',
 }
 
 export default function RootLayout({
