@@ -8,21 +8,38 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'URL inválida. Insira um link válido.' }, { status: 400 })
     }
 
-    // Extrai o Artista da URL se possível
+    // Extrai informações úteis da URL (ex: /simplificada/d/diante-do-trono/...)
     const urlObj = new URL(url)
-    const urlParts = urlObj.pathname.split('/').filter(Boolean)
-    let defaultArtist = ''
-    if (urlParts.length >= 1) {
-      defaultArtist = urlParts[0]
+    const urlSegments = urlObj.pathname.split('/').filter(Boolean)
+    
+    // Tenta adivinhar o artista ou nome da música pelas últimas partes da URL
+    let defaultTitle = 'Sem Título'
+    let defaultArtist = 'Desconhecido'
+
+    if (urlSegments.length > 0) {
+      // O último segmento costuma ser o nome da música
+      const lastSegment = urlSegments[urlSegments.length - 1]
+      defaultTitle = lastSegment
         .split('-')
         .map(word => word.charAt(0).toUpperCase() + word.slice(1))
         .join(' ')
+
+      // Se houver mais segmentos, tenta achar um artista provável
+      if (urlSegments.length > 1) {
+        // Geralmente o penúltimo ou antepenúltimo pode ser o artista
+        const artistCandidate = urlSegments[urlSegments.length - 2]
+        if (artistCandidate.length > 1 && artistCandidate !== 'simplificada' && artistCandidate !== 'cifra') {
+          defaultArtist = artistCandidate
+            .split('-')
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+            .join(' ')
+        }
+      }
     }
 
-    // Estratégia de contorno: Utiliza múltiplos fallbacks de fetch (AllOrigins e Jina)
     let htmlContent = ''
     
-    // Tenta primeiro via AllOrigins (bom para pegar o HTML cru)
+    // Tenta via AllOrigins primeiro
     try {
       const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`
       const res = await fetch(proxyUrl)
@@ -31,10 +48,10 @@ export async function POST(request: Request) {
         htmlContent = data.contents || ''
       }
     } catch (e) {
-      // Ignora e tenta o próximo
+      // Ignora erro do proxy
     }
 
-    // Se o AllOrigins falhou ou veio vazio, tenta o Jina AI
+    // Se falhar, tenta via Jina AI
     if (!htmlContent || htmlContent.length < 100) {
       const jinaUrl = `https://r.jina.ai/${url}`
       const jinaResponse = await fetch(jinaUrl, {
@@ -48,27 +65,37 @@ export async function POST(request: Request) {
 
     if (!htmlContent || htmlContent.length < 50) {
       return NextResponse.json({ 
-        error: 'Este site possui proteção rígida contra leitura automática (Cloudflare). Use a aba "Modo Manual" para colar a cifra instantaneamente.' 
+        error: 'Este site possui proteção rígida contra leitura automática. Use a aba "Modo Manual" para colar a cifra instantaneamente.' 
       }, { status: 400 })
     }
 
-    // Limpa o conteúdo básico extraído
-    let title = 'Sem Título'
-    let artist = defaultArtist || 'Desconhecido'
+    // Procura título no conteúdo markdown se houver
+    let title = defaultTitle
+    let artist = defaultArtist
 
-    // Tenta extrair título das primeiras linhas se for markdown do Jina
     const lines = htmlContent.split('\n').map((l: string) => l.trim()).filter(Boolean)
-    for (const line of lines.slice(0, 5)) {
+    for (const line of lines.slice(0, 8)) {
       if (line.startsWith('# ')) {
-        title = line.replace('# ', '').trim()
-        break
+        const cleanLine = line.replace('# ', '').trim()
+        if (cleanLine.toLowerCase() !== 'home' && cleanLine.length > 2) {
+          title = cleanLine
+          break
+        }
       }
+    }
+
+    // Detecta o tom básico se houver menção
+    let key = 'C'
+    const toneMatch = htmlContent.match(/(?:Tom|Tone|Key):\s*([A-G][#b]?m?)/i)
+    if (toneMatch) {
+      key = toneMatch[1]
+      if (key.endsWith('M')) key = key.slice(0, -1) + 'm'
     }
 
     return NextResponse.json({
       title,
       artist,
-      key: 'C',
+      key,
       content: htmlContent
     })
 
