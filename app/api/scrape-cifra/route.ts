@@ -41,7 +41,7 @@ export async function POST(request: Request) {
     }
 
     // Extrai Título do Markdown se houver
-    const lines = markdownContent.split('\n').map((l: string) => l.trims?.() || l.trim()).filter(Boolean)
+    const lines = markdownContent.split('\n').map((l: string) => l.trim()).filter(Boolean)
     let title = 'Sem Título'
     let artist = defaultArtist || 'Desconhecido'
 
