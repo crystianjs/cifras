@@ -1,12 +1,25 @@
-import { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
   title: 'Cifras',
   description: 'Seu gerenciador e visualizador de cifras e músicas',
   icons: {
-    icon: '/favicon.svg',
+    icon: '/favicon.ico',
   },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'Cifras',
+  },
+}
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: 'cover', // Permite ocupar a tela inteira em celulares (inclusive notch/ilha dinâmica)
 }
 
 export default function RootLayout({
@@ -15,8 +28,10 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="pt-BR">
-      <body className="bg-[#0f172a] text-slate-100 antialiased">{children}</body>
+    <html lang="pt-BR" className="h-full">
+      <body className="bg-[#0f172a] text-slate-100 antialiased min-h-full flex flex-col">
+        {children}
+      </body>
     </html>
   )
 }
