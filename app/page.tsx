@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
+import { jsPDF } from 'jspdf'
 
 interface Song {
   id: string
@@ -35,6 +36,17 @@ function transposeChord(chord: string, semitones: number): string {
   return NOTES[index] + modifier
 }
 
+function isLineOfChords(line: string): boolean {
+  const words = line.trim().split(/\s+/)
+  return (
+    words.length > 0 &&
+    line.trim() !== '' &&
+    words.every((word) =>
+      /^[A-G][#b]?(?:m|maj|min|dim|aug|sus)?(?:\d+)?(?:\/[A-G][#b]?)?$/.test(word)
+    )
+  )
+}
+
 export default function Home(): React.JSX.Element {
   const [songs, setSongs] = useState<Song[]>([])
   const [albums, setAlbums] = useState<Album[]>([])
@@ -45,7 +57,7 @@ export default function Home(): React.JSX.Element {
   const [selectedArtistFilter, setSelectedArtistFilter] = useState('')
   
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
-  const [activeMenu, setActiveMenu] = useState('Scores')
+  const [activeMenu, setActiveMenu] = useState<'Scores' | 'Albums'>('Scores')
 
   const [mobileView, setMobileView] = useState<'list' | 'viewer'>('list')
 
@@ -121,7 +133,9 @@ export default function Home(): React.JSX.Element {
 
   async function fetchAlbums(): Promise<void> {
     const { data, error } = await supabase.from('albums').select('*').order('name', { ascending: true })
-    if (!error && data) {
+    if (error) {
+      console.error('Erro ao buscar álbuns:', error.message)
+    } else if (data) {
       setAlbums(data)
     }
   }
@@ -205,15 +219,15 @@ export default function Home(): React.JSX.Element {
   }
 
   const handleCreateAlbum = async () => {
-    if (!newAlbumName) {
+    if (!newAlbumName.trim()) {
       alert('Dê um nome para o álbum.')
       return
     }
     const { error } = await supabase.from('albums').insert([
-      { name: newAlbumName, description: newAlbumDesc, songs: [] }
+      { name: newAlbumName.trim(), description: newAlbumDesc.trim(), songs: [] }
     ])
     if (error) {
-      alert('Erro ao criar álbum: ' + error.message)
+      alert('Erro ao criar álbum (verifique se a tabela "albums" existe no Supabase): ' + error.message)
     } else {
       alert('Álbum criado com sucesso!')
       setNewAlbumName('')
@@ -225,12 +239,14 @@ export default function Home(): React.JSX.Element {
 
   const handleAddSongToAlbum = async () => {
     if (!selectedAlbum || !songToAddId) return
-    if (selectedAlbum.songs && selectedAlbum.songs.includes(songToAddId)) {
+    const currentSongs = Array.isArray(selectedAlbum.songs) ? selectedAlbum.songs : []
+    
+    if (currentSongs.includes(songToAddId)) {
       alert('Esta música já está neste álbum.')
       return
     }
 
-    const updatedSongs = [...(selectedAlbum.songs || []), songToAddId]
+    const updatedSongs = [...currentSongs, songToAddId]
     const { error } = await supabase
       .from('albums')
       .update({ songs: updatedSongs })
@@ -241,6 +257,7 @@ export default function Home(): React.JSX.Element {
     } else {
       alert('Música adicionada ao álbum!')
       setSelectedAlbum({ ...selectedAlbum, songs: updatedSongs })
+      setSongToAddId('')
       setIsAddSongToAlbumOpen(false)
       fetchAlbums()
     }
@@ -293,13 +310,75 @@ export default function Home(): React.JSX.Element {
 
   const handleDownloadSong = () => {
     if (!selectedSong) return
-    const element = document.createElement("a")
+    const element = document.createElement('a')
     const file = new Blob([isEditing ? editContent : selectedSong.content], { type: 'text/plain' })
     element.href = URL.createObjectURL(file)
     element.download = `${isEditing ? editTitle : selectedSong.title}.txt`
     document.body.appendChild(element)
     element.click()
     document.body.removeChild(element)
+  }
+
+  // NOVO: Gerar e baixar PDF mantendo o alinhamento e destacando acordes em vermelho
+  const handleDownloadPDF = () => {
+    if (!selectedSong) return
+
+    const title = isEditing ? editTitle : selectedSong.title
+    const artist = isEditing ? editArtist : selectedSong.artist
+    const key = isEditing ? editKey : selectedSong.key
+    const content = isEditing ? editContent : selectedSong.content
+
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4',
+    })
+
+    const marginLeft = 15
+    const pageHeight = doc.internal.pageSize.getHeight()
+    let y = 20
+
+    // Cabeçalho da cifra
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(18)
+    doc.setTextColor(20, 20, 20)
+    doc.text(title || 'Sem título', marginLeft, y)
+    y += 7
+
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(12)
+    doc.setTextColor(90, 90, 90)
+    doc.text(`${artist || 'Desconhecido'}  |  Tom: ${key || 'C'}`, marginLeft, y)
+    y += 5
+
+    // Linha divisória
+    doc.setDrawColor(200, 200, 200)
+    doc.line(marginLeft, y, 195, y)
+    y += 8
+
+    // Corpo da cifra em fonte monoespaçada (Courier) para manter acordes alinhados
+    doc.setFontSize(10.5)
+    const lines = content.split('\n')
+
+    lines.forEach((line) => {
+      if (y > pageHeight - 15) {
+        doc.addPage()
+        y = 20
+      }
+
+      if (isLineOfChords(line)) {
+        doc.setFont('courier', 'bold')
+        doc.setTextColor(220, 38, 38) // Vermelho igual à tela
+      } else {
+        doc.setFont('courier', 'normal')
+        doc.setTextColor(30, 30, 30)
+      }
+
+      doc.text(line === '' ? ' ' : line, marginLeft, y)
+      y += 5
+    })
+
+    doc.save(`${title || 'cifra'}.pdf`)
   }
 
   const handleFullscreen = () => {
@@ -323,12 +402,7 @@ export default function Home(): React.JSX.Element {
     const newKey = transposeChord(currentKey, semitones)
 
     const transposedContent = currentContent.split('\n').map(line => {
-      const words = line.trim().split(/\s+/)
-      const isChordLine = words.length > 0 && words.every(word => 
-        /^[A-G][#b]?(?:m|maj|min|dim|aug|sus)?(?:\d+)?(?:\/[A-G][#b]?)?$/.test(word)
-      ) && line.trim() !== ''
-
-      if (isChordLine) {
+      if (isLineOfChords(line)) {
         return line.replace(/[A-G][#b]?(?:m|maj|min|dim|aug|sus)?(?:\d+)?(?:\/[A-G][#b]?)?/g, match => {
           if (match.includes('/')) {
             const parts = match.split('/')
@@ -358,19 +432,14 @@ export default function Home(): React.JSX.Element {
                           song.artist.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesArtist = selectedArtistFilter ? song.artist === selectedArtistFilter : true
     const matchesAlbum = activeMenu === 'Albums' && selectedAlbum 
-      ? selectedAlbum.songs?.includes(song.id) 
+      ? Array.isArray(selectedAlbum.songs) && selectedAlbum.songs.includes(song.id) 
       : true
     return matchesSearch && matchesArtist && matchesAlbum
   })
 
   const renderFormattedContent = (content: string): React.JSX.Element[] => {
     return content.split('\n').map((line, index) => {
-      const words = line.trim().split(/\s+/)
-      const isChordLine = words.length > 0 && words.every(word => 
-        /^[A-G][#b]?(?:m|maj|min|dim|aug|sus)?(?:\d+)?(?:\/[A-G][#b]?)?$/.test(word)
-      ) && line.trim() !== ''
-
-      if (isChordLine) {
+      if (isLineOfChords(line)) {
         return (
           <div key={index} className={`${chordColor} font-bold font-mono tracking-wider whitespace-pre text-base leading-snug`}>
             {line === '' ? '\u00A0' : line}
@@ -404,10 +473,10 @@ export default function Home(): React.JSX.Element {
           <h1 className="text-lg md:text-xl font-bold tracking-wide">Meu Cifras</h1>
           
           {/* Botões do Header com Amarelo quando Ativos */}
-          <nav className="hidden md:flex items-center gap-1 ml-6">
+          <nav className="flex items-center gap-1 ml-2 md:ml-6">
             <button 
-              onClick={() => { setActiveMenu('Scores'); setSelectedAlbum(null); }}
-              className={`px-3 py-1.5 rounded text-sm font-bold transition ${
+              onClick={() => { setActiveMenu('Scores'); setSelectedAlbum(null); setMobileView('list'); }}
+              className={`px-3 py-1.5 rounded text-xs md:text-sm font-bold transition ${
                 activeMenu === 'Scores' 
                   ? 'bg-yellow-400 text-gray-900 shadow-sm' 
                   : 'hover:bg-blue-600 text-blue-100'
@@ -416,8 +485,8 @@ export default function Home(): React.JSX.Element {
               Cifras
             </button>
             <button 
-              onClick={() => { setActiveMenu('Albums'); }}
-              className={`px-3 py-1.5 rounded text-sm font-bold transition ${
+              onClick={() => { setActiveMenu('Albums'); setMobileView('list'); }}
+              className={`px-3 py-1.5 rounded text-xs md:text-sm font-bold transition ${
                 activeMenu === 'Albums' 
                   ? 'bg-yellow-400 text-gray-900 shadow-sm' 
                   : 'hover:bg-blue-600 text-blue-100'
@@ -638,7 +707,7 @@ export default function Home(): React.JSX.Element {
                     <h3 className="font-bold text-sm text-gray-800">{album.name}</h3>
                     <p className="text-xs text-gray-500 line-clamp-1 mt-0.5">{album.description || 'Sem descrição'}</p>
                     <span className="text-[10px] bg-blue-100 text-[#2D68C4] px-2 py-0.5 rounded-full mt-2 inline-block">
-                      {album.songs?.length || 0} músicas
+                      {Array.isArray(album.songs) ? album.songs.length : 0} músicas
                     </span>
                   </div>
                 ))}
@@ -779,9 +848,10 @@ export default function Home(): React.JSX.Element {
                     </>
                   ) : (
                     <>
-                      <button onClick={() => setIsEditing(true)} className="bg-blue-600 text-white px-3 py-1.5 rounded text-xs font-semibold">Editar</button>
-                      <button onClick={handleFullscreen} className="bg-gray-700 text-white px-3 py-1.5 rounded text-xs font-semibold hidden md:inline-block">Tela Cheia</button>
-                      <button onClick={handleDownloadSong} className="bg-gray-800 text-white px-3 py-1.5 rounded text-xs font-semibold">Baixar</button>
+                      <button onClick={() => setIsEditing(true)} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-xs font-semibold transition">Editar</button>
+                      <button onClick={handleFullscreen} className="bg-gray-700 hover:bg-gray-800 text-white px-3 py-1.5 rounded text-xs font-semibold hidden md:inline-block transition">Tela Cheia</button>
+                      <button onClick={handleDownloadSong} className="bg-gray-800 hover:bg-gray-900 text-white px-3 py-1.5 rounded text-xs font-semibold transition">Baixar TXT</button>
+                      <button onClick={handleDownloadPDF} className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded text-xs font-semibold transition shadow-sm">Baixar PDF</button>
                       <button 
                         onClick={handleDeleteSong} 
                         className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded text-xs font-semibold transition flex items-center gap-1 shadow-sm"
