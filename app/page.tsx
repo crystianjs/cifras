@@ -64,11 +64,19 @@ export default function Home(): React.JSX.Element {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false)
   const [importMode, setImportMode] = useState<'online' | 'manual'>('online')
   
+  // Estados de Álbum
   const [isAlbumModalOpen, setIsAlbumModalOpen] = useState(false)
   const [newAlbumName, setNewAlbumName] = useState('')
   const [newAlbumDesc, setNewAlbumDesc] = useState('')
+  
+  // Modal: Puxar várias músicas da primeira parte para dentro do álbum aberto
   const [isAddSongToAlbumOpen, setIsAddSongToAlbumOpen] = useState(false)
-  const [songToAddId, setSongToAddId] = useState('')
+  const [selectedSongIdsForAlbum, setSelectedSongIdsForAlbum] = useState<string[]>([])
+  const [modalSongSearch, setModalSongSearch] = useState('')
+
+  // Modal: Enviar a cifra atual (da aba Cifras) para um Álbum
+  const [isSendToAlbumModalOpen, setIsSendToAlbumModalOpen] = useState(false)
+  const [targetAlbumId, setTargetAlbumId] = useState('')
 
   const [manualTitle, setManualTitle] = useState('')
   const [manualArtist, setManualArtist] = useState('')
@@ -137,6 +145,10 @@ export default function Home(): React.JSX.Element {
       console.error('Erro ao buscar álbuns:', error.message)
     } else if (data) {
       setAlbums(data)
+      if (selectedAlbum) {
+        const updatedCurrentAlbum = data.find(a => a.id === selectedAlbum.id)
+        if (updatedCurrentAlbum) setSelectedAlbum(updatedCurrentAlbum)
+      }
     }
   }
 
@@ -223,42 +235,107 @@ export default function Home(): React.JSX.Element {
       alert('Dê um nome para o álbum.')
       return
     }
-    const { error } = await supabase.from('albums').insert([
-      { name: newAlbumName.trim(), description: newAlbumDesc.trim(), songs: [] }
-    ])
+    const { data, error } = await supabase
+      .from('albums')
+      .insert([{ name: newAlbumName.trim(), description: newAlbumDesc.trim(), songs: [] }])
+      .select()
+
     if (error) {
-      alert('Erro ao criar álbum (verifique se a tabela "albums" existe no Supabase): ' + error.message)
+      alert('Erro ao criar álbum: ' + error.message)
     } else {
       alert('Álbum criado com sucesso!')
       setNewAlbumName('')
       setNewAlbumDesc('')
       setIsAlbumModalOpen(false)
+      await fetchAlbums()
+      if (data && data[0]) {
+        setSelectedAlbum(data[0])
+      }
+    }
+  }
+
+  // Abre o modal já marcando as músicas que estão no álbum
+  const openPullSongsModal = () => {
+    if (!selectedAlbum) return
+    const existing = Array.isArray(selectedAlbum.songs) ? selectedAlbum.songs : []
+    setSelectedSongIdsForAlbum(existing)
+    setModalSongSearch('')
+    setIsAddSongToAlbumOpen(true)
+  }
+
+  const toggleSongSelectionForAlbum = (songId: string) => {
+    setSelectedSongIdsForAlbum(prev =>
+      prev.includes(songId) ? prev.filter(id => id !== songId) : [...prev, songId]
+    )
+  }
+
+  // Salva todas as músicas selecionadas da primeira parte dentro do álbum
+  const handleSaveSongsToAlbum = async () => {
+    if (!selectedAlbum) return
+
+    const { error } = await supabase
+      .from('albums')
+      .update({ songs: selectedSongIdsForAlbum })
+      .eq('id', selectedAlbum.id)
+
+    if (error) {
+      alert('Erro ao atualizar músicas do álbum: ' + error.message)
+    } else {
+      setSelectedAlbum({ ...selectedAlbum, songs: selectedSongIdsForAlbum })
+      setIsAddSongToAlbumOpen(false)
       fetchAlbums()
     }
   }
 
-  const handleAddSongToAlbum = async () => {
-    if (!selectedAlbum || !songToAddId) return
-    const currentSongs = Array.isArray(selectedAlbum.songs) ? selectedAlbum.songs : []
-    
-    if (currentSongs.includes(songToAddId)) {
-      alert('Esta música já está neste álbum.')
-      return
-    }
+  // Remove uma música específica de dentro do álbum (sem apagar da primeira parte)
+  const handleRemoveSongFromAlbum = async (e: React.MouseEvent, songId: string) => {
+    e.stopPropagation()
+    if (!selectedAlbum) return
 
-    const updatedSongs = [...currentSongs, songToAddId]
+    const currentSongs = Array.isArray(selectedAlbum.songs) ? selectedAlbum.songs : []
+    const updatedSongs = currentSongs.filter(id => id !== songId)
+
     const { error } = await supabase
       .from('albums')
       .update({ songs: updatedSongs })
       .eq('id', selectedAlbum.id)
 
     if (error) {
-      alert('Erro ao adicionar música ao álbum: ' + error.message)
+      alert('Erro ao remover música do álbum: ' + error.message)
     } else {
-      alert('Música adicionada ao álbum!')
       setSelectedAlbum({ ...selectedAlbum, songs: updatedSongs })
-      setSongToAddId('')
-      setIsAddSongToAlbumOpen(false)
+      fetchAlbums()
+    }
+  }
+
+  // Envia a música aberta na primeira parte ("Cifras") direto para um álbum escolhido
+  const handleSendCurrentSongToAlbum = async () => {
+    if (!selectedSong || !targetAlbumId) {
+      alert('Selecione um álbum.')
+      return
+    }
+
+    const album = albums.find(a => a.id === targetAlbumId)
+    if (!album) return
+
+    const currentSongs = Array.isArray(album.songs) ? album.songs : []
+    if (currentSongs.includes(selectedSong.id)) {
+      alert(`"${selectedSong.title}" já está no álbum "${album.name}".`)
+      return
+    }
+
+    const updatedSongs = [...currentSongs, selectedSong.id]
+    const { error } = await supabase
+      .from('albums')
+      .update({ songs: updatedSongs })
+      .eq('id', album.id)
+
+    if (error) {
+      alert('Erro ao enviar música para o álbum: ' + error.message)
+    } else {
+      alert(`"${selectedSong.title}" adicionada ao álbum "${album.name}"!`)
+      setIsSendToAlbumModalOpen(false)
+      setTargetAlbumId('')
       fetchAlbums()
     }
   }
@@ -319,7 +396,6 @@ export default function Home(): React.JSX.Element {
     document.body.removeChild(element)
   }
 
-  // NOVO: Gerar e baixar PDF mantendo o alinhamento e destacando acordes em vermelho
   const handleDownloadPDF = () => {
     if (!selectedSong) return
 
@@ -338,7 +414,6 @@ export default function Home(): React.JSX.Element {
     const pageHeight = doc.internal.pageSize.getHeight()
     let y = 20
 
-    // Cabeçalho da cifra
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(18)
     doc.setTextColor(20, 20, 20)
@@ -351,12 +426,10 @@ export default function Home(): React.JSX.Element {
     doc.text(`${artist || 'Desconhecido'}  |  Tom: ${key || 'C'}`, marginLeft, y)
     y += 5
 
-    // Linha divisória
     doc.setDrawColor(200, 200, 200)
     doc.line(marginLeft, y, 195, y)
     y += 8
 
-    // Corpo da cifra em fonte monoespaçada (Courier) para manter acordes alinhados
     doc.setFontSize(10.5)
     const lines = content.split('\n')
 
@@ -368,7 +441,7 @@ export default function Home(): React.JSX.Element {
 
       if (isLineOfChords(line)) {
         doc.setFont('courier', 'bold')
-        doc.setTextColor(220, 38, 38) // Vermelho igual à tela
+        doc.setTextColor(220, 38, 38)
       } else {
         doc.setFont('courier', 'normal')
         doc.setTextColor(30, 30, 30)
@@ -437,6 +510,11 @@ export default function Home(): React.JSX.Element {
     return matchesSearch && matchesArtist && matchesAlbum
   })
 
+  const modalFilteredSongs = songs.filter(song =>
+    song.title.toLowerCase().includes(modalSongSearch.toLowerCase()) ||
+    song.artist.toLowerCase().includes(modalSongSearch.toLowerCase())
+  )
+
   const renderFormattedContent = (content: string): React.JSX.Element[] => {
     return content.split('\n').map((line, index) => {
       if (isLineOfChords(line)) {
@@ -472,7 +550,6 @@ export default function Home(): React.JSX.Element {
           </button>
           <h1 className="text-lg md:text-xl font-bold tracking-wide">Meu Cifras</h1>
           
-          {/* Botões do Header com Amarelo quando Ativos */}
           <nav className="flex items-center gap-1 ml-2 md:ml-6">
             <button 
               onClick={() => { setActiveMenu('Scores'); setSelectedAlbum(null); setMobileView('list'); }}
@@ -553,30 +630,129 @@ export default function Home(): React.JSX.Element {
         </div>
       )}
 
-      {/* Modal Adicionar Música ao Álbum */}
-      {isAddSongToAlbumOpen && (
+      {/* Modal Puxar Músicas da Primeira Parte para dentro do Álbum (Seleção Múltipla) */}
+      {isAddSongToAlbumOpen && selectedAlbum && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white w-full max-w-lg rounded-xl shadow-2xl flex flex-col overflow-hidden p-6 gap-4 max-h-[85vh]">
+            <div className="flex justify-between items-center border-b pb-3">
+              <div>
+                <h3 className="text-lg font-bold text-gray-800">Puxar Cifras para o Álbum</h3>
+                <p className="text-xs text-gray-500">Álbum: <span className="font-semibold text-[#2D68C4]">{selectedAlbum.name}</span></p>
+              </div>
+              <button onClick={() => setIsAddSongToAlbumOpen(false)} className="text-gray-500 font-bold text-lg">✕</button>
+            </div>
+
+            <input
+              type="text"
+              placeholder="Filtrar músicas por título ou artista..."
+              value={modalSongSearch}
+              onChange={(e) => setModalSongSearch(e.target.value)}
+              className="w-full border px-3 py-2 rounded text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#2D68C4]"
+            />
+
+            <div className="flex-1 overflow-y-auto border rounded-lg divide-y divide-gray-100 max-h-72">
+              {modalFilteredSongs.map(song => {
+                const isChecked = selectedSongIdsForAlbum.includes(song.id)
+                return (
+                  <label
+                    key={song.id}
+                    className={`flex items-center justify-between p-3 cursor-pointer transition ${
+                      isChecked ? 'bg-blue-50' : 'hover:bg-gray-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => toggleSongSelectionForAlbum(song.id)}
+                        className="w-4 h-4 accent-[#2D68C4] rounded cursor-pointer"
+                      />
+                      <div>
+                        <p className="text-sm font-semibold text-gray-800">{song.title}</p>
+                        <p className="text-xs text-gray-500">{song.artist}</p>
+                      </div>
+                    </div>
+                    <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-mono">
+                      {song.key || 'C'}
+                    </span>
+                  </label>
+                )
+              })}
+              {modalFilteredSongs.length === 0 && (
+                <div className="p-6 text-center text-gray-400 text-sm">
+                  Nenhuma cifra disponível.
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-between items-center pt-2 border-t">
+              <span className="text-xs font-semibold text-gray-600">
+                {selectedSongIdsForAlbum.length} música(s) selecionada(s)
+              </span>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setIsAddSongToAlbumOpen(false)}
+                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded text-sm font-semibold"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleSaveSongsToAlbum}
+                  className="px-4 py-2 bg-[#2D68C4] text-white rounded text-sm font-semibold hover:bg-blue-700"
+                >
+                  Salvar no Álbum
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Enviar Música Atual (da aba Cifras) para um Álbum */}
+      {isSendToAlbumModalOpen && selectedSong && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="bg-white w-full max-w-md rounded-xl shadow-2xl flex flex-col overflow-hidden p-6 gap-4">
             <div className="flex justify-between items-center border-b pb-3">
-              <h3 className="text-lg font-bold text-gray-800">Adicionar Cifra ao Álbum</h3>
-              <button onClick={() => setIsAddSongToAlbumOpen(false)} className="text-gray-500 font-bold">✕</button>
+              <h3 className="text-lg font-bold text-gray-800">Adicionar Cifra a um Álbum</h3>
+              <button onClick={() => setIsSendToAlbumModalOpen(false)} className="text-gray-500 font-bold">✕</button>
             </div>
             <div>
-              <label className="text-xs font-bold text-gray-700">Selecione a Cifra</label>
-              <select 
-                value={songToAddId} 
-                onChange={(e) => setSongToAddId(e.target.value)}
+              <p className="text-xs text-gray-600 mb-3">
+                Música: <span className="font-bold text-gray-900">{selectedSong.title}</span>
+              </p>
+              <label className="text-xs font-bold text-gray-700">Escolha o Álbum</label>
+              <select
+                value={targetAlbumId}
+                onChange={(e) => setTargetAlbumId(e.target.value)}
                 className="w-full border px-3 py-2 rounded text-sm mt-1 text-gray-800 bg-white"
               >
-                <option value="">-- Escolha uma música --</option>
-                {songs.map(s => (
-                  <option key={s.id} value={s.id}>{s.title} - {s.artist}</option>
+                <option value="">-- Selecione um álbum --</option>
+                {albums.map(album => (
+                  <option key={album.id} value={album.id}>
+                    {album.name} ({Array.isArray(album.songs) ? album.songs.length : 0} músicas)
+                  </option>
                 ))}
               </select>
+              {albums.length === 0 && (
+                <p className="text-xs text-amber-600 mt-2">
+                  Você ainda não criou nenhum álbum. Vá na aba "Álbum" e clique em "+ Novo Álbum".
+                </p>
+              )}
             </div>
             <div className="flex justify-end gap-2 pt-2">
-              <button onClick={() => setIsAddSongToAlbumOpen(false)} className="px-4 py-2 bg-gray-200 text-gray-700 rounded text-sm font-semibold">Cancelar</button>
-              <button onClick={handleAddSongToAlbum} className="px-4 py-2 bg-[#2D68C4] text-white rounded text-sm font-semibold hover:bg-blue-700">Adicionar</button>
+              <button
+                onClick={() => setIsSendToAlbumModalOpen(false)}
+                className="px-4 py-2 bg-gray-200 text-gray-700 rounded text-sm font-semibold"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSendCurrentSongToAlbum}
+                disabled={!targetAlbumId}
+                className="px-4 py-2 bg-[#2D68C4] text-white rounded text-sm font-semibold hover:bg-blue-700 disabled:opacity-50"
+              >
+                Adicionar ao Álbum
+              </button>
             </div>
           </div>
         </div>
@@ -720,13 +896,26 @@ export default function Home(): React.JSX.Element {
             <div className="flex flex-col h-full">
               <div className="p-3 border-b border-gray-100 bg-gray-50 flex flex-col gap-2">
                 {activeMenu === 'Albums' && selectedAlbum && (
-                  <div className="flex items-center justify-between bg-blue-50 p-2 rounded border border-blue-200">
-                    <div>
-                      <span className="text-xs text-blue-800 font-bold block">Álbum: {selectedAlbum.name}</span>
+                  <div className="flex items-center justify-between bg-blue-50 p-2.5 rounded border border-blue-200">
+                    <div className="truncate pr-2">
+                      <span className="text-xs text-blue-800 font-bold block truncate">Álbum: {selectedAlbum.name}</span>
+                      <span className="text-[10px] text-blue-600">
+                        {Array.isArray(selectedAlbum.songs) ? selectedAlbum.songs.length : 0} música(s)
+                      </span>
                     </div>
-                    <div className="flex gap-2">
-                      <button onClick={() => setIsAddSongToAlbumOpen(true)} className="text-xs bg-[#2D68C4] text-white px-2 py-1 rounded font-semibold">+ Música</button>
-                      <button onClick={() => setSelectedAlbum(null)} className="text-xs text-gray-600 hover:text-red-600 font-bold">Voltar</button>
+                    <div className="flex gap-1.5 shrink-0">
+                      <button
+                        onClick={openPullSongsModal}
+                        className="text-xs bg-[#2D68C4] hover:bg-blue-700 text-white px-2.5 py-1 rounded font-semibold transition"
+                      >
+                        + Puxar Cifras
+                      </button>
+                      <button
+                        onClick={() => setSelectedAlbum(null)}
+                        className="text-xs bg-white border border-gray-300 text-gray-700 hover:text-red-600 px-2 py-1 rounded font-bold transition"
+                      >
+                        Voltar
+                      </button>
                     </div>
                   </div>
                 )}
@@ -769,14 +958,33 @@ export default function Home(): React.JSX.Element {
                       </h3>
                       <p className="text-xs text-gray-500 mt-0.5">{song.artist}</p>
                     </div>
-                    <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded font-mono">
-                      {song.key || 'C'}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded font-mono">
+                        {song.key || 'C'}
+                      </span>
+                      {activeMenu === 'Albums' && selectedAlbum && (
+                        <button
+                          onClick={(e) => handleRemoveSongFromAlbum(e, song.id)}
+                          title="Remover do álbum"
+                          className="text-xs text-red-500 hover:bg-red-50 px-1.5 py-1 rounded font-bold"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
                 {filteredSongs.length === 0 && (
-                  <div className="p-6 text-center text-gray-400 text-sm">
-                    Nenhuma cifra encontrada.
+                  <div className="p-6 text-center text-gray-400 text-sm flex flex-col items-center gap-2">
+                    <span>Nenhuma cifra encontrada.</span>
+                    {activeMenu === 'Albums' && selectedAlbum && (
+                      <button
+                        onClick={openPullSongsModal}
+                        className="mt-2 bg-[#2D68C4] text-white text-xs px-3 py-1.5 rounded font-semibold hover:bg-blue-700"
+                      >
+                        + Puxar músicas de Cifras
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -848,6 +1056,13 @@ export default function Home(): React.JSX.Element {
                     </>
                   ) : (
                     <>
+                      <button
+                        onClick={() => setIsSendToAlbumModalOpen(true)}
+                        className="bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded text-xs font-semibold transition shadow-sm"
+                        title="Enviar esta cifra para um álbum"
+                      >
+                        + Álbum
+                      </button>
                       <button onClick={() => setIsEditing(true)} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-xs font-semibold transition">Editar</button>
                       <button onClick={handleFullscreen} className="bg-gray-700 hover:bg-gray-800 text-white px-3 py-1.5 rounded text-xs font-semibold hidden md:inline-block transition">Tela Cheia</button>
                       <button onClick={handleDownloadSong} className="bg-gray-800 hover:bg-gray-900 text-white px-3 py-1.5 rounded text-xs font-semibold transition">Baixar TXT</button>
