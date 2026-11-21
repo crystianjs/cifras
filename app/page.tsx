@@ -64,17 +64,14 @@ export default function Home(): React.JSX.Element {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false)
   const [importMode, setImportMode] = useState<'online' | 'manual'>('online')
   
-  // Estados de Álbum
   const [isAlbumModalOpen, setIsAlbumModalOpen] = useState(false)
   const [newAlbumName, setNewAlbumName] = useState('')
   const [newAlbumDesc, setNewAlbumDesc] = useState('')
   
-  // Modal: Puxar várias músicas da primeira parte para dentro do álbum aberto
   const [isAddSongToAlbumOpen, setIsAddSongToAlbumOpen] = useState(false)
   const [selectedSongIdsForAlbum, setSelectedSongIdsForAlbum] = useState<string[]>([])
   const [modalSongSearch, setModalSongSearch] = useState('')
 
-  // Modal: Enviar a cifra atual (da aba Cifras) para um Álbum
   const [isSendToAlbumModalOpen, setIsSendToAlbumModalOpen] = useState(false)
   const [targetAlbumId, setTargetAlbumId] = useState('')
 
@@ -97,9 +94,19 @@ export default function Home(): React.JSX.Element {
   const [chordColor] = useState<'text-red-600' | 'text-blue-600' | 'text-green-600' | 'text-yellow-600'>('text-red-600')
   const scrollContainerRef = useRef<HTMLDivElement>(null)
 
+  const [isFullscreenActive, setIsFullscreenActive] = useState(false)
+
   useEffect(() => {
     fetchSongs()
     fetchAlbums()
+
+    const handleFullscreenChange = () => {
+      setIsFullscreenActive(!!document.fullscreenElement)
+    }
+    document.addEventListener('fullscreenchange', handleFullscreenChange)
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange)
+    }
   }, [])
 
   useEffect(() => {
@@ -170,6 +177,9 @@ export default function Home(): React.JSX.Element {
   const handleBackToList = () => {
     setMobileView('list')
     setIsAutoScrolling(false)
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {})
+    }
   }
 
   const handleSaveNewSong = async () => {
@@ -254,7 +264,6 @@ export default function Home(): React.JSX.Element {
     }
   }
 
-  // Abre o modal já marcando as músicas que estão no álbum
   const openPullSongsModal = () => {
     if (!selectedAlbum) return
     const existing = Array.isArray(selectedAlbum.songs) ? selectedAlbum.songs : []
@@ -269,7 +278,6 @@ export default function Home(): React.JSX.Element {
     )
   }
 
-  // Salva todas as músicas selecionadas da primeira parte dentro do álbum
   const handleSaveSongsToAlbum = async () => {
     if (!selectedAlbum) return
 
@@ -287,7 +295,6 @@ export default function Home(): React.JSX.Element {
     }
   }
 
-  // Remove uma música específica de dentro do álbum (sem apagar da primeira parte)
   const handleRemoveSongFromAlbum = async (e: React.MouseEvent, songId: string) => {
     e.stopPropagation()
     if (!selectedAlbum) return
@@ -308,7 +315,6 @@ export default function Home(): React.JSX.Element {
     }
   }
 
-  // Envia a música aberta na primeira parte ("Cifras") direto para um álbum escolhido
   const handleSendCurrentSongToAlbum = async () => {
     if (!selectedSong || !targetAlbumId) {
       alert('Selecione um álbum.')
@@ -462,7 +468,7 @@ export default function Home(): React.JSX.Element {
         alert(`Erro ao tentar modo tela cheia: ${err.message}`)
       })
     } else {
-      document.exitFullscreen()
+      document.exitFullscreen().catch(() => {})
     }
   }
 
@@ -536,24 +542,24 @@ export default function Home(): React.JSX.Element {
     <main className="h-screen w-screen overflow-hidden bg-gray-100 text-gray-900 flex flex-col font-sans relative">
       
       {/* Navbar Superior */}
-      <header className="bg-[#2D68C4] text-white px-4 md:px-6 py-3 flex justify-between items-center shadow-md shrink-0 z-20">
-        <div className="flex items-center gap-3">
+      <header className="bg-[#2D68C4] text-white px-3 md:px-6 py-2.5 md:py-3 flex justify-between items-center shadow-md shrink-0 z-20 gap-2">
+        <div className="flex items-center gap-2 md:gap-3 min-w-0">
           <button 
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className="text-white hover:bg-blue-700 p-2 rounded-md transition focus:outline-none"
+            className="text-white hover:bg-blue-700 p-1.5 md:p-2 rounded-md transition focus:outline-none shrink-0"
             title="Abrir Menu"
             aria-label="Abrir Menu"
           >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
-          <h1 className="text-lg md:text-xl font-bold tracking-wide">Meu Cifras</h1>
+          <h1 className="text-base md:text-xl font-bold tracking-wide truncate">Meu Cifras</h1>
           
-          <nav className="flex items-center gap-1 ml-2 md:ml-6">
+          <nav className="flex items-center gap-1 ml-1 md:ml-6 shrink-0">
             <button 
               onClick={() => { setActiveMenu('Scores'); setSelectedAlbum(null); setMobileView('list'); }}
-              className={`px-3 py-1.5 rounded text-xs md:text-sm font-bold transition ${
+              className={`px-2.5 md:px-3 py-1.5 rounded text-xs md:text-sm font-bold transition ${
                 activeMenu === 'Scores' 
                   ? 'bg-yellow-400 text-gray-900 shadow-sm' 
                   : 'hover:bg-blue-600 text-blue-100'
@@ -563,7 +569,7 @@ export default function Home(): React.JSX.Element {
             </button>
             <button 
               onClick={() => { setActiveMenu('Albums'); setMobileView('list'); }}
-              className={`px-3 py-1.5 rounded text-xs md:text-sm font-bold transition ${
+              className={`px-2.5 md:px-3 py-1.5 rounded text-xs md:text-sm font-bold transition ${
                 activeMenu === 'Albums' 
                   ? 'bg-yellow-400 text-gray-900 shadow-sm' 
                   : 'hover:bg-blue-600 text-blue-100'
@@ -574,20 +580,20 @@ export default function Home(): React.JSX.Element {
           </nav>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 md:gap-2 shrink-0">
           {activeMenu === 'Albums' && (
             <button 
               onClick={() => setIsAlbumModalOpen(true)}
-              className="bg-yellow-400 hover:bg-yellow-500 text-gray-900 px-3 py-1.5 rounded shadow text-xs md:text-sm font-bold transition flex items-center gap-1"
+              className="bg-yellow-400 hover:bg-yellow-500 text-gray-900 px-2.5 md:px-3 py-1.5 rounded shadow text-xs md:text-sm font-bold transition flex items-center gap-1"
             >
               <span>+ Novo Álbum</span>
             </button>
           )}
           <button 
             onClick={() => setIsImportModalOpen(true)}
-            className="bg-white text-[#2D68C4] hover:bg-blue-50 px-3 md:px-4 py-1.5 md:py-2 rounded shadow cursor-pointer text-xs md:text-sm font-semibold transition flex items-center gap-1"
+            className="bg-white text-[#2D68C4] hover:bg-blue-50 px-2.5 md:px-4 py-1.5 md:py-2 rounded shadow cursor-pointer text-xs md:text-sm font-semibold transition flex items-center gap-1"
           >
-            <span>+ Importar Cifra</span>
+            <span>+ Importar</span>
           </button>
         </div>
       </header>
@@ -630,7 +636,7 @@ export default function Home(): React.JSX.Element {
         </div>
       )}
 
-      {/* Modal Puxar Músicas da Primeira Parte para dentro do Álbum (Seleção Múltipla) */}
+      {/* Modal Puxar Músicas para dentro do Álbum */}
       {isAddSongToAlbumOpen && selectedAlbum && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="bg-white w-full max-w-lg rounded-xl shadow-2xl flex flex-col overflow-hidden p-6 gap-4 max-h-[85vh]">
@@ -708,7 +714,7 @@ export default function Home(): React.JSX.Element {
         </div>
       )}
 
-      {/* Modal Enviar Música Atual (da aba Cifras) para um Álbum */}
+      {/* Modal Enviar Cifra Atual para um Álbum */}
       {isSendToAlbumModalOpen && selectedSong && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="bg-white w-full max-w-md rounded-xl shadow-2xl flex flex-col overflow-hidden p-6 gap-4">
@@ -908,7 +914,7 @@ export default function Home(): React.JSX.Element {
                         onClick={openPullSongsModal}
                         className="text-xs bg-[#2D68C4] hover:bg-blue-700 text-white px-2.5 py-1 rounded font-semibold transition"
                       >
-                        + Puxar Cifras
+                        + Puxar
                       </button>
                       <button
                         onClick={() => setSelectedAlbum(null)}
@@ -993,11 +999,11 @@ export default function Home(): React.JSX.Element {
         </aside>
 
         {/* Painel Direito (Visualizador) */}
-        <section id="song-viewer-container" className={`flex-1 p-3 md:p-6 overflow-y-auto bg-gray-50 flex justify-center h-full w-full ${mobileView === 'list' ? 'hidden md:flex' : 'flex'}`}>
+        <section id="song-viewer-container" className={`flex-1 p-2 md:p-6 overflow-y-auto bg-gray-50 flex justify-center h-full w-full ${mobileView === 'list' ? 'hidden md:flex' : 'flex'}`}>
           {selectedSong ? (
-            <div className="w-full max-w-4xl bg-white p-4 md:p-8 rounded-xl border border-gray-200 shadow-sm h-fit flex flex-col">
+            <div className="w-full max-w-4xl bg-white p-3 md:p-8 rounded-xl border border-gray-200 shadow-sm h-fit flex flex-col">
               
-              <div className="md:hidden mb-3">
+              <div className="md:hidden mb-2">
                 <button 
                   onClick={handleBackToList}
                   className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold px-3 py-1.5 rounded-md text-xs flex items-center gap-1.5 transition"
@@ -1005,12 +1011,12 @@ export default function Home(): React.JSX.Element {
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
                   </svg>
-                  <span>Voltar</span>
+                  <span>Voltar para Lista</span>
                 </button>
               </div>
 
-              <div className="border-b border-gray-200 pb-4 mb-4 flex flex-wrap justify-between items-center gap-4">
-                <div className="flex-1">
+              <div className="border-b border-gray-200 pb-3 mb-3 flex flex-wrap justify-between items-center gap-3">
+                <div className="flex-1 min-w-[200px]">
                   {isEditing ? (
                     <div className="flex flex-col gap-2">
                       <input type="text" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} className="border px-3 py-1.5 rounded text-lg font-bold text-gray-900 w-full" />
@@ -1018,31 +1024,31 @@ export default function Home(): React.JSX.Element {
                     </div>
                   ) : (
                     <>
-                      <h2 className="text-xl md:text-2xl font-bold text-gray-900">{selectedSong.title}</h2>
-                      <p className="text-gray-600 text-sm md:text-base font-medium mt-0.5">{selectedSong.artist}</p>
+                      <h2 className="text-lg md:text-2xl font-bold text-gray-900 truncate">{selectedSong.title}</h2>
+                      <p className="text-gray-600 text-xs md:text-base font-medium mt-0.5 truncate">{selectedSong.artist}</p>
                     </>
                   )}
 
-                  <div className="mt-3 flex items-center gap-2 flex-wrap">
-                    <span className="bg-blue-100 text-[#2D68C4] text-xs px-3 py-1 rounded-full font-semibold">
-                      Tom: {isEditing ? <input type="text" value={editKey} onChange={(e) => setEditKey(e.target.value)} className="w-12 text-center border rounded ml-1 text-black" /> : selectedSong.key}
+                  <div className="mt-2.5 flex items-center gap-1.5 md:gap-2 flex-wrap">
+                    <span className="bg-blue-100 text-[#2D68C4] text-[11px] md:text-xs px-2.5 py-1 rounded-full font-semibold">
+                      Tom: {isEditing ? <input type="text" value={editKey} onChange={(e) => setEditKey(e.target.value)} className="w-10 text-center border rounded ml-1 text-black" /> : selectedSong.key}
                     </span>
 
-                    <div className="flex items-center gap-1 bg-gray-100 px-2 py-1 rounded">
-                      <span className="text-xs text-gray-600 mr-1">Transpor:</span>
-                      <button onClick={() => handleTranspose(-1)} className="px-2.5 py-0.5 bg-white rounded shadow-sm text-xs font-bold hover:bg-gray-200">-</button>
-                      <button onClick={() => handleTranspose(1)} className="px-2.5 py-0.5 bg-white rounded shadow-sm text-xs font-bold hover:bg-gray-200">+</button>
+                    <div className="flex items-center gap-1 bg-gray-100 px-2 py-0.5 md:py-1 rounded text-xs">
+                      <span className="text-gray-600 mr-0.5">Transpor:</span>
+                      <button onClick={() => handleTranspose(-1)} className="px-2 py-0.5 bg-white rounded shadow-sm font-bold hover:bg-gray-200">-</button>
+                      <button onClick={() => handleTranspose(1)} className="px-2 py-0.5 bg-white rounded shadow-sm font-bold hover:bg-gray-200">+</button>
                     </div>
 
                     {!isEditing && (
-                      <div className="flex items-center gap-2 bg-gray-100 px-2 py-1 rounded">
+                      <div className="flex items-center gap-1.5 bg-gray-100 px-2 py-0.5 md:py-1 rounded text-xs">
                         <button
                           onClick={() => setIsAutoScrolling(!isAutoScrolling)}
-                          className={`px-2 py-0.5 rounded text-xs font-bold text-white transition ${isAutoScrolling ? 'bg-red-600' : 'bg-green-600'}`}
+                          className={`px-2 py-0.5 rounded font-bold text-white transition ${isAutoScrolling ? 'bg-red-600' : 'bg-green-600'}`}
                         >
                           {isAutoScrolling ? 'Parar' : 'Auto'}
                         </button>
-                        <input type="number" min="1" max="10" value={scrollSpeed} onChange={(e) => setScrollSpeed(Number(e.target.value))} className="w-10 text-center text-xs border rounded py-0.5 bg-white" />
+                        <input type="number" min="1" max="10" value={scrollSpeed} onChange={(e) => setScrollSpeed(Number(e.target.value))} className="w-8 text-center border rounded py-0.5 bg-white" />
                       </div>
                     )}
                   </div>
@@ -1051,31 +1057,40 @@ export default function Home(): React.JSX.Element {
                 <div className="flex flex-wrap items-center gap-1.5">
                   {isEditing ? (
                     <>
-                      <button onClick={handleSaveEdit} className="bg-green-600 text-white px-3 py-1.5 rounded text-xs font-semibold">Salvar</button>
-                      <button onClick={() => { setIsEditing(false); initEditState(selectedSong); }} className="bg-gray-300 text-gray-800 px-3 py-1.5 rounded text-xs font-semibold">Cancelar</button>
+                      <button onClick={handleSaveEdit} className="bg-green-600 text-white px-2.5 py-1.5 rounded text-xs font-semibold">Salvar</button>
+                      <button onClick={() => { setIsEditing(false); initEditState(selectedSong); }} className="bg-gray-300 text-gray-800 px-2.5 py-1.5 rounded text-xs font-semibold">Cancelar</button>
                     </>
                   ) : (
                     <>
                       <button
                         onClick={() => setIsSendToAlbumModalOpen(true)}
-                        className="bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded text-xs font-semibold transition shadow-sm"
+                        className="bg-amber-500 hover:bg-amber-600 text-white px-2.5 py-1.5 rounded text-xs font-semibold transition shadow-sm"
                         title="Enviar esta cifra para um álbum"
                       >
                         + Álbum
                       </button>
-                      <button onClick={() => setIsEditing(true)} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-xs font-semibold transition">Editar</button>
-                      <button onClick={handleFullscreen} className="bg-gray-700 hover:bg-gray-800 text-white px-3 py-1.5 rounded text-xs font-semibold hidden md:inline-block transition">Tela Cheia</button>
-                      <button onClick={handleDownloadSong} className="bg-gray-800 hover:bg-gray-900 text-white px-3 py-1.5 rounded text-xs font-semibold transition">Baixar TXT</button>
-                      <button onClick={handleDownloadPDF} className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded text-xs font-semibold transition shadow-sm">Baixar PDF</button>
+                      <button onClick={() => setIsEditing(true)} className="bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1.5 rounded text-xs font-semibold transition">Editar</button>
+                      
+                      {/* Botão de Tela Cheia agora visível e responsivo para celulares e PCs */}
+                      <button 
+                        onClick={handleFullscreen} 
+                        className="bg-gray-700 hover:bg-gray-800 text-white px-2.5 py-1.5 rounded text-xs font-semibold transition"
+                        title={isFullscreenActive ? 'Sair da Tela Cheia' : 'Tela Cheia'}
+                      >
+                        {isFullscreenActive ? 'Sair Tela' : 'Tela Cheia'}
+                      </button>
+
+                      <button onClick={handleDownloadSong} className="bg-gray-800 hover:bg-gray-900 text-white px-2.5 py-1.5 rounded text-xs font-semibold transition">TXT</button>
+                      <button onClick={handleDownloadPDF} className="bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1.5 rounded text-xs font-semibold transition shadow-sm">PDF</button>
                       <button 
                         onClick={handleDeleteSong} 
-                        className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded text-xs font-semibold transition flex items-center gap-1 shadow-sm"
+                        className="bg-red-600 hover:bg-red-700 text-white px-2.5 py-1.5 rounded text-xs font-semibold transition flex items-center gap-1 shadow-sm"
                         title="Excluir Cifra"
                       >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2,2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                         </svg>
-                        <span>Excluir</span>
+                        <span className="hidden sm:inline">Excluir</span>
                       </button>
                     </>
                   )}
@@ -1091,7 +1106,7 @@ export default function Home(): React.JSX.Element {
               ) : (
                 <div 
                   ref={scrollContainerRef}
-                  className="bg-white p-2 rounded-lg leading-snug overflow-x-auto font-mono max-h-[60vh] md:max-h-[55vh] overflow-y-auto border border-dashed border-gray-200"
+                  className="bg-white p-2 rounded-lg leading-snug overflow-x-auto font-mono max-h-[58vh] md:max-h-[55vh] overflow-y-auto border border-dashed border-gray-200"
                 >
                   {renderFormattedContent(selectedSong.content)}
                 </div>
