@@ -121,7 +121,6 @@ export default function Home() {
     if (songsData) setSongs(songsData)
     if (albumsData) setAlbums(albumsData)
     
-    // Atualiza também o álbum selecionado caso esteja aberto para refletir mudanças em tempo real
     if (selectedAlbum && albumsData) {
       const updatedCurrentAlbum = albumsData.find(a => a.id === selectedAlbum.id)
       if (updatedCurrentAlbum) setSelectedAlbum(updatedCurrentAlbum)
