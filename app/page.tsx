@@ -63,6 +63,11 @@ export default function Home() {
   const [mobileView, setMobileView] = useState<'list' | 'viewer'>('list')
 
   const [isImportModalOpen, setIsImportModalOpen] = useState(false)
+  const [importTitle, setImportTitle] = useState('')
+  const [importArtist, setImportArtist] = useState('')
+  const [importKey, setImportKey] = useState('C')
+  const [importContent, setImportContent] = useState('')
+
   const [isAlbumModalOpen, setIsAlbumModalOpen] = useState(false)
   const [isManageAlbumSongsOpen, setIsManageAlbumSongsOpen] = useState(false)
   const [newAlbumName, setNewAlbumName] = useState('')
@@ -197,6 +202,38 @@ export default function Home() {
       setSelectedSong(updated)
       setEditKey(newKey)
       setEditContent(transposedContent)
+    }
+  }
+
+  const handleImportSong = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!importTitle || !importContent) {
+      alert('Preencha o título e o conteúdo da cifra.')
+      return
+    }
+
+    const { data, error } = await supabase.from('songs').insert([
+      {
+        title: importTitle.trim(),
+        artist: importArtist.trim() || 'Artista Desconhecido',
+        key: importKey.trim().toUpperCase() || 'C',
+        content: importContent,
+        user_id: user?.id,
+        is_locked: false
+      }
+    ]).select().single()
+
+    if (!error) {
+      alert('Cifra importada com sucesso!')
+      setImportTitle('')
+      setImportArtist('')
+      setImportKey('C')
+      setImportContent('')
+      setIsImportModalOpen(false)
+      loadUserData(user)
+      if (data) handleSelectSong(data)
+    } else {
+      alert('Erro ao importar cifra: ' + error.message)
     }
   }
 
@@ -383,7 +420,7 @@ export default function Home() {
   return (
     <main className="h-screen w-screen overflow-hidden bg-gray-100 text-gray-900 flex flex-col font-sans relative">
       
-      {/* Navbar Superior Otimizada para Mobile */}
+      {/* Navbar Superior Otimizada (Apenas Permissões no Menu Lateral, Botão de Importar Mantido) */}
       <header className="bg-[#2D68C4] text-white px-3 md:px-4 py-2.5 flex flex-wrap justify-between items-center shadow-md shrink-0 z-20 gap-2">
         <div className="flex items-center gap-2">
           <button onClick={() => setIsSidebarOpen(true)} className="hover:bg-blue-700 p-1.5 rounded transition" aria-label="Abrir Menu">
@@ -433,7 +470,7 @@ export default function Home() {
             <nav className="flex flex-col gap-1">
               <button onClick={() => { setActiveMenu('Scores'); setSelectedAlbum(null); setIsSidebarOpen(false); }} className={`p-3 rounded text-left font-semibold text-sm transition ${activeMenu === 'Scores' ? 'bg-blue-50 text-[#2D68C4]' : 'hover:bg-gray-50'}`}>Cifras</button>
               <button onClick={() => { setActiveMenu('Albums'); setSelectedAlbum(null); setIsSidebarOpen(false); }} className={`p-3 rounded text-left font-semibold text-sm transition ${activeMenu === 'Albums' ? 'bg-blue-50 text-[#2D68C4]' : 'hover:bg-gray-50'}`}>Álbuns</button>
-              {userRole === 'admin' && <button onClick={() => router.push('/permissoes')} className="p-3 rounded text-left font-semibold text-sm text-purple-700 hover:bg-purple-50 transition">Gerenciar Permissões</button>}
+              {userRole === 'admin' && <button onClick={() => router.push('/permissoes')} className="p-3 rounded text-left font-semibold text-sm text-purple-700 hover:bg-purple-50 transition flex items-center gap-2">Gerenciar Permissões</button>}
             </nav>
             <div className="mt-auto pt-4 border-t">
               <button onClick={handleLogout} className="w-full bg-red-500 text-white py-2 rounded text-sm font-bold hover:bg-red-600 transition shadow-sm">Sair da Conta</button>
@@ -604,6 +641,40 @@ export default function Home() {
           )}
         </section>
       </div>
+
+      {/* Modal para Importar Cifra */}
+      {isImportModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <form onSubmit={handleImportSong} className="bg-white p-6 rounded-xl shadow-xl max-w-lg w-full flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b pb-3">
+              <h3 className="font-bold text-lg text-gray-800">Importar Nova Cifra</h3>
+              <button type="button" onClick={() => setIsImportModalOpen(false)} className="font-bold text-gray-500 hover:text-gray-800">✕</button>
+            </div>
+            <div className="flex gap-3 flex-col md:flex-row">
+              <div className="flex-1">
+                <label className="text-xs font-bold text-gray-700">Título da Música</label>
+                <input type="text" required value={importTitle} onChange={(e) => setImportTitle(e.target.value)} placeholder="Ex: 10.000 Razões" className="w-full border px-3 py-2 rounded text-sm mt-1 focus:ring-1 focus:ring-[#2D68C4] focus:outline-none" />
+              </div>
+              <div className="w-full md:w-32">
+                <label className="text-xs font-bold text-gray-700">Tom Original</label>
+                <input type="text" value={importKey} onChange={(e) => setImportKey(e.target.value)} placeholder="Ex: C" className="w-full border px-3 py-2 rounded text-sm mt-1 uppercase font-mono text-center focus:ring-1 focus:ring-[#2D68C4] focus:outline-none" />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-gray-700">Artista / Banda</label>
+              <input type="text" value={importArtist} onChange={(e) => setImportArtist(e.target.value)} placeholder="Ex: Gabriela Rocha" className="w-full border px-3 py-2 rounded text-sm mt-1 focus:ring-1 focus:ring-[#2D68C4] focus:outline-none" />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-gray-700">Conteúdo (Cifra com Acordes)</label>
+              <textarea required value={importContent} onChange={(e) => setImportContent(e.target.value)} placeholder="Cole o conteúdo da cifra aqui..." className="w-full h-48 border p-3 rounded font-mono text-xs mt-1 focus:ring-1 focus:ring-[#2D68C4] focus:outline-none" />
+            </div>
+            <div className="flex justify-end gap-2 pt-2 border-t">
+              <button type="button" onClick={() => setIsImportModalOpen(false)} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded text-sm font-semibold transition">Cancelar</button>
+              <button type="submit" className="px-5 py-2 bg-[#2D68C4] hover:bg-blue-700 text-white rounded text-sm font-bold shadow-sm transition">Salvar e Importar</button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {/* Modal para Gerenciar / Puxar Músicas para o Álbum */}
       {isManageAlbumSongsOpen && selectedAlbum && (
