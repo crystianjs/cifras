@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
-import { jsPDF } from 'jspdf'
+import { useRouter } from 'next/navigation'
 
 interface Song {
   id: string
@@ -10,6 +10,8 @@ interface Song {
   artist: string
   key: string
   content: string
+  is_locked?: boolean
+  user_id?: string
 }
 
 interface Album {
@@ -24,64 +26,47 @@ const NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 function transposeChord(chord: string, semitones: number): string {
   const match = chord.match(/^([A-G][#b]?)(.*)$/)
   if (!match) return chord
-  
   let [, baseNote, modifier] = match
-  const flatMap: Record<string, string> = { 'Db': 'C#', 'Eb': 'D#', 'Gb': 'F#', 'Ab': 'G#', 'Bb': 'A#' }
+  const flatMap: Record<string, string> = { Db: 'C#', Eb: 'D#', Gb: 'F#', Ab: 'G#', Bb: 'A#' }
   if (flatMap[baseNote]) baseNote = flatMap[baseNote]
-
   let index = NOTES.indexOf(baseNote)
   if (index === -1) return chord
-
   index = (index + semitones + 12) % 12
   return NOTES[index] + modifier
 }
 
 function isLineOfChords(line: string): boolean {
   const words = line.trim().split(/\s+/)
-  return (
-    words.length > 0 &&
-    line.trim() !== '' &&
-    words.every((word) =>
-      /^[A-G][#b]?(?:m|maj|min|dim|aug|sus)?(?:\d+)?(?:\/[A-G][#b]?)?$/.test(word)
-    )
-  )
+  return words.length > 0 && line.trim() !== '' && words.every(word => /^[A-G][#b]?(?:m|maj|min|dim|aug|sus)?(?:\d+)?(?:\/[A-G][#b]?)?$/.test(word))
 }
 
-export default function Home(): React.JSX.Element {
+export default function Home() {
+  const router = useRouter()
+  const [user, setUser] = useState<any>(null)
+  const [userRole, setUserRole] = useState<'admin' | 'convidado' | 'pendente' | 'bloqueado'>('pendente')
+  const [canImport, setCanImport] = useState(true)
+  const [canShare, setCanShare] = useState(true)
+  const [canSaveEdits, setCanSaveEdits] = useState(false)
+  const [accessRequested, setAccessRequested] = useState(false)
+
   const [songs, setSongs] = useState<Song[]>([])
   const [albums, setAlbums] = useState<Album[]>([])
   const [selectedSong, setSelectedSong] = useState<Song | null>(null)
   const [selectedAlbum, setSelectedAlbum] = useState<Album | null>(null)
-  
+
+  const [hasAccessToLocked, setHasAccessToLocked] = useState(false)
+  const [hasRequestedAccess, setHasRequestedAccess] = useState(false)
+
   const [searchTerm, setSearchTerm] = useState('')
-  const [selectedArtistFilter, setSelectedArtistFilter] = useState('')
-  
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [activeMenu, setActiveMenu] = useState<'Scores' | 'Albums'>('Scores')
-
   const [mobileView, setMobileView] = useState<'list' | 'viewer'>('list')
 
   const [isImportModalOpen, setIsImportModalOpen] = useState(false)
-  const [importMode, setImportMode] = useState<'online' | 'manual'>('online')
-  
   const [isAlbumModalOpen, setIsAlbumModalOpen] = useState(false)
+  const [isManageAlbumSongsOpen, setIsManageAlbumSongsOpen] = useState(false)
   const [newAlbumName, setNewAlbumName] = useState('')
   const [newAlbumDesc, setNewAlbumDesc] = useState('')
-  
-  const [isAddSongToAlbumOpen, setIsAddSongToAlbumOpen] = useState(false)
-  const [selectedSongIdsForAlbum, setSelectedSongIdsForAlbum] = useState<string[]>([])
-  const [modalSongSearch, setModalSongSearch] = useState('')
-
-  const [isSendToAlbumModalOpen, setIsSendToAlbumModalOpen] = useState(false)
-  const [targetAlbumId, setTargetAlbumId] = useState('')
-
-  const [manualTitle, setManualTitle] = useState('')
-  const [manualArtist, setManualArtist] = useState('')
-  const [manualKey, setManualKey] = useState('C')
-  const [manualContent, setManualContent] = useState('')
-  
-  const [cifraUrl, setCifraUrl] = useState('')
-  const [isLoadingOnline, setIsLoadingOnline] = useState(false)
 
   const [isEditing, setIsEditing] = useState(false)
   const [editTitle, setEditTitle] = useState('')
@@ -91,34 +76,69 @@ export default function Home(): React.JSX.Element {
 
   const [isAutoScrolling, setIsAutoScrolling] = useState(false)
   const [scrollSpeed, setScrollSpeed] = useState(3)
-  const [chordColor] = useState<'text-red-600' | 'text-blue-600' | 'text-green-600' | 'text-yellow-600'>('text-red-600')
   const scrollContainerRef = useRef<HTMLDivElement>(null)
-
   const [isFullscreenActive, setIsFullscreenActive] = useState(false)
 
   useEffect(() => {
-    fetchSongs()
-    fetchAlbums()
+    async function initApp() {
+      const { data: { user: authUser } } = await supabase.auth.getUser()
+      if (!authUser) { router.push('/login'); return }
+      setUser(authUser)
 
-    const handleFullscreenChange = () => {
-      setIsFullscreenActive(!!document.fullscreenElement)
+      const { data: prof } = await supabase.from('profiles').select('*').eq('id', authUser.id).single()
+      if (prof) {
+        setUserRole(prof.role)
+        setCanImport(prof.can_import)
+        setCanShare(prof.can_share)
+        setAccessRequested(prof.access_requested || false)
+      }
+
+      loadUserData(authUser, prof?.role)
     }
-    document.addEventListener('fullscreenchange', handleFullscreenChange)
-    return () => {
-      document.removeEventListener('fullscreenchange', handleFullscreenChange)
+    initApp()
+
+    const handleFS = () => setIsFullscreenActive(!!document.fullscreenElement)
+    document.addEventListener('fullscreenchange', handleFS)
+    return () => document.removeEventListener('fullscreenchange', handleFS)
+  }, [router])
+
+  async function loadUserData(authUser: any, role = userRole) {
+    let allowedSongsQuery = supabase.from('songs').select('*').order('title')
+    let allowedAlbumsQuery = supabase.from('albums').select('*').order('name')
+
+    if (authUser && role !== 'admin') {
+      const { data: invites } = await supabase.from('album_invites').select('album_id, can_save_edits').eq('guest_email', authUser.email)
+      const albumIds = invites?.map(i => i.album_id) || []
+      const canSaveAny = invites?.some(i => i.can_save_edits) || false
+      setCanSaveEdits(canSaveAny)
+
+      allowedAlbumsQuery = supabase.from('albums').select('*').in('id', albumIds.length > 0 ? albumIds : ['00000000-0000-0000-0000-000000000000'])
     }
-  }, [])
+
+    const { data: songsData } = await allowedSongsQuery
+    const { data: albumsData } = await allowedAlbumsQuery
+
+    if (songsData) setSongs(songsData)
+    if (albumsData) setAlbums(albumsData)
+    
+    // Atualiza também o álbum selecionado caso esteja aberto para refletir mudanças em tempo real
+    if (selectedAlbum && albumsData) {
+      const updatedCurrentAlbum = albumsData.find(a => a.id === selectedAlbum.id)
+      if (updatedCurrentAlbum) setSelectedAlbum(updatedCurrentAlbum)
+    }
+
+    if (songsData && songsData.length > 0 && !selectedSong) {
+      handleSelectSong(songsData[0], authUser?.id)
+    }
+  }
 
   useEffect(() => {
-    let interval: ReturnType<typeof setInterval>
+    let interval: any
     if (isAutoScrolling && scrollContainerRef.current) {
       interval = setInterval(() => {
         if (scrollContainerRef.current) {
           scrollContainerRef.current.scrollTop += 1
-          if (
-            scrollContainerRef.current.scrollTop + scrollContainerRef.current.clientHeight >=
-            scrollContainerRef.current.scrollHeight
-          ) {
+          if (scrollContainerRef.current.scrollTop + scrollContainerRef.current.clientHeight >= scrollContainerRef.current.scrollHeight) {
             setIsAutoScrolling(false)
           }
         }
@@ -127,35 +147,19 @@ export default function Home(): React.JSX.Element {
     return () => clearInterval(interval)
   }, [isAutoScrolling, scrollSpeed])
 
-  async function fetchSongs(): Promise<void> {
-    const { data, error } = await supabase.from('songs').select('*').order('title', { ascending: true })
-    if (error) {
-      console.error('Erro ao buscar cifras:', error)
-    } else if (data) {
-      setSongs(data)
-      if (selectedSong) {
-        const currentSelectedInDb = data.find(s => s.id === selectedSong.id)
-        if (currentSelectedInDb) {
-          setSelectedSong(currentSelectedInDb)
-          if (!isEditing) initEditState(currentSelectedInDb)
-        }
-      } else if (data.length > 0) {
-        setSelectedSong(data[0])
-        initEditState(data[0])
-      }
-    }
-  }
+  async function handleSelectSong(song: Song, userId = user?.id) {
+    setSelectedSong(song)
+    initEditState(song)
+    setMobileView('viewer')
 
-  async function fetchAlbums(): Promise<void> {
-    const { data, error } = await supabase.from('albums').select('*').order('name', { ascending: true })
-    if (error) {
-      console.error('Erro ao buscar álbuns:', error.message)
-    } else if (data) {
-      setAlbums(data)
-      if (selectedAlbum) {
-        const updatedCurrentAlbum = data.find(a => a.id === selectedAlbum.id)
-        if (updatedCurrentAlbum) setSelectedAlbum(updatedCurrentAlbum)
-      }
+    if (song.is_locked && userRole !== 'admin') {
+      const { data: grant } = await supabase.from('song_access_grants').select('*').eq('song_id', song.id).eq('user_id', userId).single()
+      setHasAccessToLocked(!!grant)
+
+      const { data: req } = await supabase.from('song_access_requests').select('*').eq('song_id', song.id).eq('user_id', userId).eq('status', 'pendente').single()
+      setHasRequestedAccess(!!req)
+    } else {
+      setHasAccessToLocked(true)
     }
   }
 
@@ -167,317 +171,10 @@ export default function Home(): React.JSX.Element {
     setIsAutoScrolling(false)
   }
 
-  const handleSelectSong = (song: Song) => {
-    setSelectedSong(song)
-    initEditState(song)
-    setIsEditing(false)
-    setMobileView('viewer')
-  }
-
-  const handleBackToList = () => {
-    setMobileView('list')
-    setIsAutoScrolling(false)
-    if (document.fullscreenElement) {
-      document.exitFullscreen().catch(() => {})
-    }
-  }
-
-  const handleSaveNewSong = async () => {
-    if (!manualTitle || !manualContent) {
-      alert('Preencha pelo menos o Título e o conteúdo da cifra.')
-      return
-    }
-
-    const { error } = await supabase.from('songs').insert([
-      { title: manualTitle, artist: manualArtist || 'Desconhecido', key: manualKey || 'C', content: manualContent }
-    ])
-
-    if (error) {
-      alert('Erro ao salvar cifra: ' + error.message)
-    } else {
-      alert('Cifra salva com sucesso!')
-      setIsImportModalOpen(false)
-      setManualTitle('')
-      setManualArtist('')
-      setManualKey('C')
-      setManualContent('')
-      setCifraUrl('')
-      fetchSongs()
-    }
-  }
-
-  const handleFetchOnlineCifra = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!cifraUrl) {
-      alert('Insira uma URL válida.')
-      return
-    }
-
-    setIsLoadingOnline(true)
-    try {
-      const res = await fetch('/api/scrape-cifra', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: cifraUrl })
-      })
-
-      const data = await res.json()
-      if (!res.ok) {
-        throw new Error(data.error || 'Erro ao buscar cifra online.')
-      }
-
-      setManualTitle(data.title)
-      setManualArtist(data.artist)
-      setManualKey(data.key)
-      setManualContent(data.content)
-      
-      setImportMode('manual')
-      alert(`Sucesso! Puxamos "${data.title}" de ${data.artist} (Tom: ${data.key}). Revise e clique em Salvar Cifra!`)
-    } catch (err: any) {
-      alert('Erro: ' + err.message)
-    } finally {
-      setIsLoadingOnline(false)
-    }
-  }
-
-  const handleCreateAlbum = async () => {
-    if (!newAlbumName.trim()) {
-      alert('Dê um nome para o álbum.')
-      return
-    }
-    const { data, error } = await supabase
-      .from('albums')
-      .insert([{ name: newAlbumName.trim(), description: newAlbumDesc.trim(), songs: [] }])
-      .select()
-
-    if (error) {
-      alert('Erro ao criar álbum: ' + error.message)
-    } else {
-      alert('Álbum criado com sucesso!')
-      setNewAlbumName('')
-      setNewAlbumDesc('')
-      setIsAlbumModalOpen(false)
-      await fetchAlbums()
-      if (data && data[0]) {
-        setSelectedAlbum(data[0])
-      }
-    }
-  }
-
-  const openPullSongsModal = () => {
-    if (!selectedAlbum) return
-    const existing = Array.isArray(selectedAlbum.songs) ? selectedAlbum.songs : []
-    setSelectedSongIdsForAlbum(existing)
-    setModalSongSearch('')
-    setIsAddSongToAlbumOpen(true)
-  }
-
-  const toggleSongSelectionForAlbum = (songId: string) => {
-    setSelectedSongIdsForAlbum(prev =>
-      prev.includes(songId) ? prev.filter(id => id !== songId) : [...prev, songId]
-    )
-  }
-
-  const handleSaveSongsToAlbum = async () => {
-    if (!selectedAlbum) return
-
-    const { error } = await supabase
-      .from('albums')
-      .update({ songs: selectedSongIdsForAlbum })
-      .eq('id', selectedAlbum.id)
-
-    if (error) {
-      alert('Erro ao atualizar músicas do álbum: ' + error.message)
-    } else {
-      setSelectedAlbum({ ...selectedAlbum, songs: selectedSongIdsForAlbum })
-      setIsAddSongToAlbumOpen(false)
-      fetchAlbums()
-    }
-  }
-
-  const handleRemoveSongFromAlbum = async (e: React.MouseEvent, songId: string) => {
-    e.stopPropagation()
-    if (!selectedAlbum) return
-
-    const currentSongs = Array.isArray(selectedAlbum.songs) ? selectedAlbum.songs : []
-    const updatedSongs = currentSongs.filter(id => id !== songId)
-
-    const { error } = await supabase
-      .from('albums')
-      .update({ songs: updatedSongs })
-      .eq('id', selectedAlbum.id)
-
-    if (error) {
-      alert('Erro ao remover música do álbum: ' + error.message)
-    } else {
-      setSelectedAlbum({ ...selectedAlbum, songs: updatedSongs })
-      fetchAlbums()
-    }
-  }
-
-  const handleSendCurrentSongToAlbum = async () => {
-    if (!selectedSong || !targetAlbumId) {
-      alert('Selecione um álbum.')
-      return
-    }
-
-    const album = albums.find(a => a.id === targetAlbumId)
-    if (!album) return
-
-    const currentSongs = Array.isArray(album.songs) ? album.songs : []
-    if (currentSongs.includes(selectedSong.id)) {
-      alert(`"${selectedSong.title}" já está no álbum "${album.name}".`)
-      return
-    }
-
-    const updatedSongs = [...currentSongs, selectedSong.id]
-    const { error } = await supabase
-      .from('albums')
-      .update({ songs: updatedSongs })
-      .eq('id', album.id)
-
-    if (error) {
-      alert('Erro ao enviar música para o álbum: ' + error.message)
-    } else {
-      alert(`"${selectedSong.title}" adicionada ao álbum "${album.name}"!`)
-      setIsSendToAlbumModalOpen(false)
-      setTargetAlbumId('')
-      fetchAlbums()
-    }
-  }
-
-  const handleSaveEdit = async () => {
-    if (!selectedSong || !selectedSong.id) return
-
-    const { error } = await supabase
-      .from('songs')
-      .update({ 
-        title: editTitle, 
-        artist: editArtist, 
-        key: editKey, 
-        content: editContent 
-      })
-      .eq('id', selectedSong.id)
-
-    if (error) {
-      alert('Erro ao salvar alterações: ' + error.message)
-    } else {
-      alert('Cifra atualizada com sucesso!')
-      const updated: Song = { 
-        ...selectedSong, 
-        title: editTitle, 
-        artist: editArtist, 
-        key: editKey, 
-        content: editContent 
-      }
-      setSelectedSong(updated)
-      setIsEditing(false)
-      fetchSongs()
-    }
-  }
-
-  const handleDeleteSong = async () => {
-    if (!selectedSong || !selectedSong.id) return
-    if (!confirm(`Deseja realmente excluir "${selectedSong.title}"?`)) return
-
-    const { error } = await supabase.from('songs').delete().eq('id', selectedSong.id)
-    if (error) {
-      alert('Erro ao excluir: ' + error.message)
-    } else {
-      alert('Cifra excluída com sucesso!')
-      setSelectedSong(null)
-      setMobileView('list')
-      fetchSongs()
-    }
-  }
-
-  const handleDownloadSong = () => {
-    if (!selectedSong) return
-    const element = document.createElement('a')
-    const file = new Blob([isEditing ? editContent : selectedSong.content], { type: 'text/plain' })
-    element.href = URL.createObjectURL(file)
-    element.download = `${isEditing ? editTitle : selectedSong.title}.txt`
-    document.body.appendChild(element)
-    element.click()
-    document.body.removeChild(element)
-  }
-
-  const handleDownloadPDF = () => {
-    if (!selectedSong) return
-
-    const title = isEditing ? editTitle : selectedSong.title
-    const artist = isEditing ? editArtist : selectedSong.artist
-    const key = isEditing ? editKey : selectedSong.key
-    const content = isEditing ? editContent : selectedSong.content
-
-    const doc = new jsPDF({
-      orientation: 'portrait',
-      unit: 'mm',
-      format: 'a4',
-    })
-
-    const marginLeft = 15
-    const pageHeight = doc.internal.pageSize.getHeight()
-    let y = 20
-
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(18)
-    doc.setTextColor(20, 20, 20)
-    doc.text(title || 'Sem título', marginLeft, y)
-    y += 7
-
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(12)
-    doc.setTextColor(90, 90, 90)
-    doc.text(`${artist || 'Desconhecido'}  |  Tom: ${key || 'C'}`, marginLeft, y)
-    y += 5
-
-    doc.setDrawColor(200, 200, 200)
-    doc.line(marginLeft, y, 195, y)
-    y += 8
-
-    doc.setFontSize(10.5)
-    const lines = content.split('\n')
-
-    lines.forEach((line) => {
-      if (y > pageHeight - 15) {
-        doc.addPage()
-        y = 20
-      }
-
-      if (isLineOfChords(line)) {
-        doc.setFont('courier', 'bold')
-        doc.setTextColor(220, 38, 38)
-      } else {
-        doc.setFont('courier', 'normal')
-        doc.setTextColor(30, 30, 30)
-      }
-
-      doc.text(line === '' ? ' ' : line, marginLeft, y)
-      y += 5
-    })
-
-    doc.save(`${title || 'cifra'}.pdf`)
-  }
-
-  const handleFullscreen = () => {
-    const elem = document.getElementById('song-viewer-container')
-    if (!elem) return
-    if (!document.fullscreenElement) {
-      elem.requestFullscreen().catch((err) => {
-        alert(`Erro ao tentar modo tela cheia: ${err.message}`)
-      })
-    } else {
-      document.exitFullscreen().catch(() => {})
-    }
-  }
-
   const handleTranspose = (semitones: number) => {
     if (!selectedSong) return
-
     const currentKey = isEditing ? editKey : (selectedSong.key || 'C')
     const currentContent = isEditing ? editContent : selectedSong.content
-
     const newKey = transposeChord(currentKey, semitones)
 
     const transposedContent = currentContent.split('\n').map(line => {
@@ -504,622 +201,474 @@ export default function Home(): React.JSX.Element {
     }
   }
 
-  const artistsList = Array.from(new Set(songs.map(s => s.artist))).filter(Boolean).sort()
+  const handleCreateAlbum = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (userRole !== 'admin') {
+      alert('Apenas administradores podem criar álbuns.')
+      return
+    }
 
-  const filteredSongs = songs.filter(song => {
-    const matchesSearch = song.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          song.artist.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesArtist = selectedArtistFilter ? song.artist === selectedArtistFilter : true
-    const matchesAlbum = activeMenu === 'Albums' && selectedAlbum 
-      ? Array.isArray(selectedAlbum.songs) && selectedAlbum.songs.includes(song.id) 
-      : true
-    return matchesSearch && matchesArtist && matchesAlbum
-  })
+    const { error } = await supabase.from('albums').insert([
+      { name: newAlbumName, description: newAlbumDesc, songs: [] }
+    ])
 
-  const modalFilteredSongs = songs.filter(song =>
-    song.title.toLowerCase().includes(modalSongSearch.toLowerCase()) ||
-    song.artist.toLowerCase().includes(modalSongSearch.toLowerCase())
-  )
-
-  const renderFormattedContent = (content: string): React.JSX.Element[] => {
-    return content.split('\n').map((line, index) => {
-      if (isLineOfChords(line)) {
-        return (
-          <div key={index} className={`${chordColor} font-bold font-mono tracking-wider whitespace-pre text-base leading-snug`}>
-            {line === '' ? '\u00A0' : line}
-          </div>
-        )
-      }
-      return (
-        <div key={index} className="text-gray-800 font-mono whitespace-pre text-sm leading-snug">
-          {line === '' ? '\u00A0' : line}
-        </div>
-      )
-    })
+    if (!error) {
+      alert('Álbum criado com sucesso!')
+      setNewAlbumName('')
+      setNewAlbumDesc('')
+      setIsAlbumModalOpen(false)
+      loadUserData(user)
+    } else {
+      alert('Erro ao criar álbum: ' + error.message)
+    }
   }
+
+  const handleToggleSongInAlbum = async (songId: string) => {
+    if (!selectedAlbum || userRole !== 'admin') return
+    const currentSongs = Array.isArray(selectedAlbum.songs) ? selectedAlbum.songs : []
+    let updatedSongs: string[] = []
+
+    if (currentSongs.includes(songId)) {
+      updatedSongs = currentSongs.filter(id => id !== songId)
+    } else {
+      updatedSongs = [...currentSongs, songId]
+    }
+
+    const { error } = await supabase
+      .from('albums')
+      .update({ songs: updatedSongs })
+      .eq('id', selectedAlbum.id)
+
+    if (!error) {
+      setSelectedAlbum({ ...selectedAlbum, songs: updatedSongs })
+      loadUserData(user)
+    } else {
+      alert('Erro ao atualizar músicas do álbum: ' + error.message)
+    }
+  }
+
+  const handleRequestAccess = async () => {
+    if (!selectedSong || !user) return
+    const { error } = await supabase.from('song_access_requests').insert([
+      { song_id: selectedSong.id, user_id: user.id, user_email: user.email }
+    ])
+    if (!error) {
+      setHasRequestedAccess(true)
+      alert('Solicitação enviada ao Administrador!')
+    }
+  }
+
+  const handleRequestSystemAccess = async () => {
+    if (!user) return
+    const { error } = await supabase
+      .from('profiles')
+      .update({ access_requested: true })
+      .eq('id', user.id)
+
+    if (!error) {
+      setAccessRequested(true)
+      alert('Solicitação enviada! O Administrador foi notificado.')
+    }
+  }
+
+  const handleToggleLock = async () => {
+    if (!selectedSong || userRole !== 'admin') return
+    const newLockState = !selectedSong.is_locked
+    const { error } = await supabase.from('songs').update({ is_locked: newLockState }).eq('id', selectedSong.id)
+    if (!error) {
+      setSelectedSong({ ...selectedSong, is_locked: newLockState })
+      setSongs(songs.map(s => s.id === selectedSong.id ? { ...s, is_locked: newLockState } : s))
+    }
+  }
+
+  const handleDeleteSong = async () => {
+    if (!selectedSong) return
+    const isOwnerOrAdmin = userRole === 'admin' || selectedSong.user_id === user?.id
+    if (!isOwnerOrAdmin) {
+      alert('Apenas o Administrador ou o autor podem excluir esta cifra.')
+      return
+    }
+
+    if (confirm(`Tem certeza que deseja excluir permanentemente a cifra "${selectedSong.title}"?`)) {
+      const { error } = await supabase.from('songs').delete().eq('id', selectedSong.id)
+      if (!error) {
+        alert('Cifra excluída com sucesso!')
+        setSelectedSong(null)
+        loadUserData(user)
+        setMobileView('list')
+      } else {
+        alert('Erro ao excluir: ' + error.message)
+      }
+    }
+  }
+
+  const handleSaveEdit = async () => {
+    if (!selectedSong) return
+    const isOwnerOrAdmin = userRole === 'admin' || selectedSong.user_id === user?.id
+    if (!isOwnerOrAdmin && !canSaveEdits) {
+      alert('Você não tem permissão para salvar alterações nesta cifra.')
+      return
+    }
+
+    const { error } = await supabase.from('songs').update({ title: editTitle, artist: editArtist, key: editKey, content: editContent }).eq('id', selectedSong.id)
+    if (!error) {
+      alert('Cifra atualizada com sucesso!')
+      setSelectedSong({ ...selectedSong, title: editTitle, artist: editArtist, key: editKey, content: editContent })
+      setIsEditing(false)
+      loadUserData(user)
+    }
+  }
+
+  const handleFullscreen = () => {
+    const elem = document.getElementById('song-viewer-container')
+    if (!elem) return
+    if (!document.fullscreenElement) elem.requestFullscreen().catch(() => {})
+    else document.exitFullscreen().catch(() => {})
+  }
+
+  const handleShareSong = () => {
+    if (!selectedSong) return
+    const url = `${window.location.origin}/share/${selectedSong.id}`
+    navigator.clipboard.writeText(url)
+    alert('Link de compartilhamento copiado!')
+  }
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    router.push('/login')
+  }
+
+  if (userRole === 'pendente' || userRole === 'bloqueado') {
+    return (
+      <main className="h-screen w-screen overflow-hidden bg-gray-100 flex items-center justify-center p-4 text-center font-sans">
+        <div className="bg-white p-8 rounded-xl shadow-md border border-gray-200 max-w-md flex flex-col gap-4">
+          <h2 className="text-xl font-bold text-gray-900">
+            {userRole === 'pendente' ? 'Acesso Restrito' : 'Acesso Bloqueado'}
+          </h2>
+          <p className="text-sm text-gray-600">
+            {userRole === 'pendente'
+              ? 'Sua conta ainda não possui liberação total. Clique abaixo para notificar o Administrador.'
+              : 'Seu acesso ao sistema foi suspenso pelo Administrador.'}
+          </p>
+
+          {userRole === 'pendente' && (
+            <button
+              onClick={handleRequestSystemAccess}
+              disabled={accessRequested}
+              className="bg-[#2D68C4] hover:bg-blue-700 text-white px-4 py-2.5 rounded text-sm font-bold transition disabled:opacity-50 shadow"
+            >
+              {accessRequested ? 'Solicitação Enviada (Aguardando Admin)' : 'Pedir Permissão ao Admin'}
+            </button>
+          )}
+
+          <button
+            onClick={handleLogout}
+            className="text-xs text-gray-500 hover:text-red-600 font-semibold mt-1"
+          >
+            Sair ou trocar de conta
+          </button>
+        </div>
+      </main>
+    )
+  }
+
+  const filteredSongs = songs.filter(s => {
+    const matchSearch = s.title.toLowerCase().includes(searchTerm.toLowerCase()) || s.artist.toLowerCase().includes(searchTerm.toLowerCase())
+    if (activeMenu === 'Albums' && selectedAlbum) {
+      const albumSongIds = Array.isArray(selectedAlbum.songs) ? selectedAlbum.songs : []
+      return matchSearch && albumSongIds.includes(s.id)
+    }
+    return matchSearch
+  })
 
   return (
     <main className="h-screen w-screen overflow-hidden bg-gray-100 text-gray-900 flex flex-col font-sans relative">
-      
-      {/* Navbar Superior */}
-      <header className="bg-[#2D68C4] text-white px-3 md:px-6 py-2.5 md:py-3 flex justify-between items-center shadow-md shrink-0 z-20 gap-2">
-        <div className="flex items-center gap-2 md:gap-3 min-w-0">
-          <button 
-            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className="text-white hover:bg-blue-700 p-1.5 md:p-2 rounded-md transition focus:outline-none shrink-0"
-            title="Abrir Menu"
-            aria-label="Abrir Menu"
-          >
-            <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
+      {/* Navbar Superior com Padrão Unificado */}
+      <header className="bg-[#2D68C4] text-white px-4 py-3 flex justify-between items-center shadow-md shrink-0 z-20">
+        <div className="flex items-center gap-3">
+          <button onClick={() => setIsSidebarOpen(true)} className="hover:bg-blue-700 p-2 rounded transition" aria-label="Abrir Menu">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
           </button>
-          <h1 className="text-base md:text-xl font-bold tracking-wide truncate">Meu Cifras</h1>
+          <h1 className="text-lg font-bold">Meu Cifras</h1>
           
-          <nav className="flex items-center gap-1 ml-1 md:ml-6 shrink-0">
+          <nav className="flex items-center gap-1 ml-4">
             <button 
               onClick={() => { setActiveMenu('Scores'); setSelectedAlbum(null); setMobileView('list'); }}
-              className={`px-2.5 md:px-3 py-1.5 rounded text-xs md:text-sm font-bold transition ${
-                activeMenu === 'Scores' 
-                  ? 'bg-yellow-400 text-gray-900 shadow-sm' 
-                  : 'hover:bg-blue-600 text-blue-100'
-              }`}
+              className={`px-3 py-1.5 rounded text-sm font-bold transition ${activeMenu === 'Scores' ? 'bg-white text-[#2D68C4] shadow-sm' : 'text-blue-100 hover:bg-blue-600'}`}
             >
               Cifras
             </button>
             <button 
-              onClick={() => { setActiveMenu('Albums'); setMobileView('list'); }}
-              className={`px-2.5 md:px-3 py-1.5 rounded text-xs md:text-sm font-bold transition ${
-                activeMenu === 'Albums' 
-                  ? 'bg-yellow-400 text-gray-900 shadow-sm' 
-                  : 'hover:bg-blue-600 text-blue-100'
-              }`}
+              onClick={() => { setActiveMenu('Albums'); setSelectedAlbum(null); setMobileView('list'); }}
+              className={`px-3 py-1.5 rounded text-sm font-bold transition ${activeMenu === 'Albums' ? 'bg-white text-[#2D68C4] shadow-sm' : 'text-blue-100 hover:bg-blue-600'}`}
             >
-              Álbum
+              Álbuns
             </button>
           </nav>
         </div>
 
-        <div className="flex items-center gap-1.5 md:gap-2 shrink-0">
-          {activeMenu === 'Albums' && (
-            <button 
-              onClick={() => setIsAlbumModalOpen(true)}
-              className="bg-yellow-400 hover:bg-yellow-500 text-gray-900 px-2.5 md:px-3 py-1.5 rounded shadow text-xs md:text-sm font-bold transition flex items-center gap-1"
-            >
-              <span>+ Novo Álbum</span>
+        <div className="flex items-center gap-2">
+          {userRole === 'admin' && activeMenu === 'Albums' && (
+            <button onClick={() => setIsAlbumModalOpen(true)} className="bg-white text-[#2D68C4] hover:bg-gray-50 px-3 py-1.5 rounded text-xs font-bold shadow transition">
+              + Novo Álbum
             </button>
           )}
-          <button 
-            onClick={() => setIsImportModalOpen(true)}
-            className="bg-white text-[#2D68C4] hover:bg-blue-50 px-2.5 md:px-4 py-1.5 md:py-2 rounded shadow cursor-pointer text-xs md:text-sm font-semibold transition flex items-center gap-1"
-          >
-            <span>+ Importar</span>
-          </button>
+          {userRole === 'admin' && (
+            <button onClick={() => router.push('/permissoes')} className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded text-xs font-semibold shadow flex items-center gap-1.5 transition">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+              Permissões
+            </button>
+          )}
+          {canImport && activeMenu === 'Scores' && (
+            <button onClick={() => setIsImportModalOpen(true)} className="bg-white text-[#2D68C4] hover:bg-gray-50 px-3 py-1.5 rounded text-xs font-semibold shadow transition">
+              + Importar
+            </button>
+          )}
         </div>
       </header>
 
-      {/* Modal Criar Álbum */}
-      {isAlbumModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white w-full max-w-md rounded-xl shadow-2xl flex flex-col overflow-hidden p-6 gap-4">
-            <div className="flex justify-between items-center border-b pb-3">
-              <h3 className="text-lg font-bold text-gray-800">Criar Novo Álbum / Repertório</h3>
-              <button onClick={() => setIsAlbumModalOpen(false)} className="text-gray-500 font-bold">✕</button>
-            </div>
-            <div className="flex flex-col gap-3">
-              <div>
-                <label className="text-xs font-bold text-gray-700">Nome do Álbum</label>
-                <input 
-                  type="text" 
-                  value={newAlbumName} 
-                  onChange={(e) => setNewAlbumName(e.target.value)} 
-                  placeholder="Ex: Culto de Domingo..." 
-                  className="w-full border px-3 py-2 rounded text-sm mt-1 text-gray-800"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-gray-700">Descrição</label>
-                <textarea 
-                  value={newAlbumDesc} 
-                  onChange={(e) => setNewAlbumDesc(e.target.value)} 
-                  placeholder="Detalhes ou observações..." 
-                  className="w-full border px-3 py-2 rounded text-sm mt-1 text-gray-800"
-                  rows={3}
-                />
-              </div>
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <button onClick={() => setIsAlbumModalOpen(false)} className="px-4 py-2 bg-gray-200 text-gray-700 rounded text-sm font-semibold">Cancelar</button>
-              <button onClick={handleCreateAlbum} className="px-4 py-2 bg-[#2D68C4] text-white rounded text-sm font-semibold hover:bg-blue-700">Criar Álbum</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Puxar Músicas para dentro do Álbum */}
-      {isAddSongToAlbumOpen && selectedAlbum && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white w-full max-w-lg rounded-xl shadow-2xl flex flex-col overflow-hidden p-6 gap-4 max-h-[85vh]">
-            <div className="flex justify-between items-center border-b pb-3">
-              <div>
-                <h3 className="text-lg font-bold text-gray-800">Puxar Cifras para o Álbum</h3>
-                <p className="text-xs text-gray-500">Álbum: <span className="font-semibold text-[#2D68C4]">{selectedAlbum.name}</span></p>
-              </div>
-              <button onClick={() => setIsAddSongToAlbumOpen(false)} className="text-gray-500 font-bold text-lg">✕</button>
-            </div>
-
-            <input
-              type="text"
-              placeholder="Filtrar músicas por título ou artista..."
-              value={modalSongSearch}
-              onChange={(e) => setModalSongSearch(e.target.value)}
-              className="w-full border px-3 py-2 rounded text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#2D68C4]"
-            />
-
-            <div className="flex-1 overflow-y-auto border rounded-lg divide-y divide-gray-100 max-h-72">
-              {modalFilteredSongs.map(song => {
-                const isChecked = selectedSongIdsForAlbum.includes(song.id)
-                return (
-                  <label
-                    key={song.id}
-                    className={`flex items-center justify-between p-3 cursor-pointer transition ${
-                      isChecked ? 'bg-blue-50' : 'hover:bg-gray-50'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="checkbox"
-                        checked={isChecked}
-                        onChange={() => toggleSongSelectionForAlbum(song.id)}
-                        className="w-4 h-4 accent-[#2D68C4] rounded cursor-pointer"
-                      />
-                      <div>
-                        <p className="text-sm font-semibold text-gray-800">{song.title}</p>
-                        <p className="text-xs text-gray-500">{song.artist}</p>
-                      </div>
-                    </div>
-                    <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-mono">
-                      {song.key || 'C'}
-                    </span>
-                  </label>
-                )
-              })}
-              {modalFilteredSongs.length === 0 && (
-                <div className="p-6 text-center text-gray-400 text-sm">
-                  Nenhuma cifra disponível.
-                </div>
-              )}
-            </div>
-
-            <div className="flex justify-between items-center pt-2 border-t">
-              <span className="text-xs font-semibold text-gray-600">
-                {selectedSongIdsForAlbum.length} música(s) selecionada(s)
-              </span>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setIsAddSongToAlbumOpen(false)}
-                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded text-sm font-semibold"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={handleSaveSongsToAlbum}
-                  className="px-4 py-2 bg-[#2D68C4] text-white rounded text-sm font-semibold hover:bg-blue-700"
-                >
-                  Salvar no Álbum
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Enviar Cifra Atual para um Álbum */}
-      {isSendToAlbumModalOpen && selectedSong && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white w-full max-w-md rounded-xl shadow-2xl flex flex-col overflow-hidden p-6 gap-4">
-            <div className="flex justify-between items-center border-b pb-3">
-              <h3 className="text-lg font-bold text-gray-800">Adicionar Cifra a um Álbum</h3>
-              <button onClick={() => setIsSendToAlbumModalOpen(false)} className="text-gray-500 font-bold">✕</button>
-            </div>
-            <div>
-              <p className="text-xs text-gray-600 mb-3">
-                Música: <span className="font-bold text-gray-900">{selectedSong.title}</span>
-              </p>
-              <label className="text-xs font-bold text-gray-700">Escolha o Álbum</label>
-              <select
-                value={targetAlbumId}
-                onChange={(e) => setTargetAlbumId(e.target.value)}
-                className="w-full border px-3 py-2 rounded text-sm mt-1 text-gray-800 bg-white"
-              >
-                <option value="">-- Selecione um álbum --</option>
-                {albums.map(album => (
-                  <option key={album.id} value={album.id}>
-                    {album.name} ({Array.isArray(album.songs) ? album.songs.length : 0} músicas)
-                  </option>
-                ))}
-              </select>
-              {albums.length === 0 && (
-                <p className="text-xs text-amber-600 mt-2">
-                  Você ainda não criou nenhum álbum. Vá na aba "Álbum" e clique em "+ Novo Álbum".
-                </p>
-              )}
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                onClick={() => setIsSendToAlbumModalOpen(false)}
-                className="px-4 py-2 bg-gray-200 text-gray-700 rounded text-sm font-semibold"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleSendCurrentSongToAlbum}
-                disabled={!targetAlbumId}
-                className="px-4 py-2 bg-[#2D68C4] text-white rounded text-sm font-semibold hover:bg-blue-700 disabled:opacity-50"
-              >
-                Adicionar ao Álbum
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Importar Cifra */}
-      {isImportModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white w-full max-w-xl rounded-xl shadow-2xl flex flex-col overflow-hidden">
-            <div className="bg-[#2D68C4] text-white px-6 py-4 flex justify-between items-center">
-              <h3 className="text-lg font-bold">Importar / Adicionar Cifra</h3>
-              <button onClick={() => setIsImportModalOpen(false)} className="text-white hover:text-gray-200 font-bold text-lg">✕</button>
-            </div>
-
-            <div className="flex border-b bg-gray-50">
-              <button 
-                onClick={() => setImportMode('online')}
-                className={`flex-1 py-3 text-sm font-semibold border-b-2 transition ${importMode === 'online' ? 'border-[#2D68C4] text-[#2D68C4] bg-white' : 'border-transparent text-gray-600 hover:bg-gray-100'}`}
-              >
-                Modo Online
-              </button>
-              <button 
-                onClick={() => setImportMode('manual')}
-                className={`flex-1 py-3 text-sm font-semibold border-b-2 transition ${importMode === 'manual' ? 'border-[#2D68C4] text-[#2D68C4] bg-white' : 'border-transparent text-gray-600 hover:bg-gray-100'}`}
-              >
-                Modo Manual
-              </button>
-            </div>
-
-            <div className="p-6 flex flex-col gap-4 max-h-[75vh] overflow-y-auto">
-              {importMode === 'online' ? (
-                <form onSubmit={handleFetchOnlineCifra} className="flex flex-col gap-4">
-                  <p className="text-xs text-gray-500">Cole o link (URL) de sites compatíveis.</p>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-bold text-gray-700">URL da Cifra</label>
-                    <input 
-                      type="url" 
-                      placeholder="Ex: https://www.cifraclub.com.br/..." 
-                      value={cifraUrl} 
-                      onChange={(e) => setCifraUrl(e.target.value)} 
-                      className="border px-3 py-2 rounded text-sm text-gray-800 font-mono"
-                      required
-                    />
-                  </div>
-                  <div className="flex justify-end gap-2 pt-2">
-                    <button type="button" onClick={() => setIsImportModalOpen(false)} className="px-4 py-2 bg-gray-200 text-gray-700 rounded text-sm font-semibold">Cancelar</button>
-                    <button 
-                      type="submit" 
-                      disabled={isLoadingOnline}
-                      className="px-5 py-2 bg-[#2D68C4] text-white rounded text-sm font-semibold hover:bg-blue-700 shadow disabled:opacity-50"
-                    >
-                      {isLoadingOnline ? 'Buscando Cifra...' : 'Buscar Automaticamente'}
-                    </button>
-                  </div>
-                </form>
-              ) : (
-                <>
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="col-span-2 flex flex-col gap-1">
-                      <label className="text-xs font-bold text-gray-700">Título da Música</label>
-                      <input type="text" value={manualTitle} onChange={(e) => setManualTitle(e.target.value)} className="border px-3 py-2 rounded text-sm text-gray-800" />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-xs font-bold text-gray-700">Tom</label>
-                      <input type="text" value={manualKey} onChange={(e) => setManualKey(e.target.value)} className="border px-3 py-2 rounded text-sm text-gray-800 text-center uppercase" />
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-bold text-gray-700">Artista / Banda</label>
-                    <input type="text" value={manualArtist} onChange={(e) => setManualArtist(e.target.value)} className="border px-3 py-2 rounded text-sm text-gray-800" />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-bold text-gray-700">Conteúdo da Cifra</label>
-                    <textarea rows={8} value={manualContent} onChange={(e) => setManualContent(e.target.value)} className="border p-3 rounded text-xs font-mono text-gray-800" />
-                  </div>
-                  <div className="flex justify-end gap-2 pt-2">
-                    <button onClick={() => setIsImportModalOpen(false)} className="px-4 py-2 bg-gray-200 text-gray-700 rounded text-sm font-semibold">Cancelar</button>
-                    <button onClick={handleSaveNewSong} className="px-5 py-2 bg-green-600 text-white rounded text-sm font-semibold shadow">Salvar Cifra</button>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Drawer Menu Lateral */}
+      {/* Sidebar Lateral Deslizante */}
       {isSidebarOpen && (
         <div className="fixed inset-0 z-50 flex">
           <div className="fixed inset-0 bg-black/50" onClick={() => setIsSidebarOpen(false)} />
-          <aside className="relative w-72 bg-white h-full shadow-2xl flex flex-col z-10">
-            <div className="bg-[#2D68C4] text-white p-6 flex flex-col gap-1">
-              <h2 className="text-xl font-bold">Menu</h2>
-              <span className="text-xs text-blue-200">Scores & Cifras</span>
+          <aside className="relative w-72 bg-white h-full shadow-2xl flex flex-col z-10 p-4 gap-4">
+            <div className="flex justify-between items-center border-b pb-3">
+              <h2 className="font-bold text-lg text-gray-800">Menu Principal</h2>
+              <button onClick={() => setIsSidebarOpen(false)} className="font-bold text-gray-500 hover:text-gray-800" aria-label="Fechar Menu">✕</button>
             </div>
-            <nav className="flex-1 py-4 overflow-y-auto space-y-1 px-3">
-              <button
-                onClick={() => { setActiveMenu('Scores'); setSelectedAlbum(null); setIsSidebarOpen(false); }}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-semibold ${activeMenu === 'Scores' ? 'bg-yellow-100 text-yellow-800 font-bold' : 'text-gray-700 hover:bg-gray-100'}`}
-              >
-                <span>Cifras</span>
-              </button>
-              <button
-                onClick={() => { setActiveMenu('Albums'); setIsSidebarOpen(false); }}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-semibold ${activeMenu === 'Albums' ? 'bg-yellow-100 text-yellow-800 font-bold' : 'text-gray-700 hover:bg-gray-100'}`}
-              >
-                <span>Álbum</span>
-              </button>
+            <nav className="flex flex-col gap-1">
+              <button onClick={() => { setActiveMenu('Scores'); setSelectedAlbum(null); setIsSidebarOpen(false); }} className={`p-3 rounded text-left font-semibold text-sm transition ${activeMenu === 'Scores' ? 'bg-blue-50 text-[#2D68C4]' : 'hover:bg-gray-50'}`}>Cifras</button>
+              <button onClick={() => { setActiveMenu('Albums'); setSelectedAlbum(null); setIsSidebarOpen(false); }} className={`p-3 rounded text-left font-semibold text-sm transition ${activeMenu === 'Albums' ? 'bg-blue-50 text-[#2D68C4]' : 'hover:bg-gray-50'}`}>Álbuns</button>
+              {userRole === 'admin' && <button onClick={() => router.push('/permissoes')} className="p-3 rounded text-left font-semibold text-sm text-purple-700 hover:bg-purple-50 transition">Gerenciar Permissões</button>}
             </nav>
+            <div className="mt-auto pt-4 border-t">
+              <button onClick={handleLogout} className="w-full bg-red-500 text-white py-2 rounded text-sm font-bold hover:bg-red-600 transition shadow-sm">Sair da Conta</button>
+            </div>
           </aside>
         </div>
       )}
 
-      {/* Conteúdo Principal */}
+      {/* Corpo da Aplicação */}
       <div className="flex flex-1 overflow-hidden">
-        
-        {/* Painel Esquerdo (Lista) */}
-        <aside className={`w-full md:w-96 bg-white border-r border-gray-200 flex flex-col shadow-sm shrink-0 h-full ${mobileView === 'viewer' ? 'hidden md:flex' : 'flex'}`}>
-          {activeMenu === 'Albums' && !selectedAlbum ? (
-            <div className="flex flex-col h-full">
-              <div className="p-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
-                <span className="text-xs font-bold uppercase text-gray-500">Seus Álbuns</span>
-                <button onClick={() => setIsAlbumModalOpen(true)} className="text-xs text-[#2D68C4] font-bold">+ Novo</button>
-              </div>
-              <div className="overflow-y-auto flex-1 divide-y divide-gray-100">
-                {albums.map(album => (
-                  <div key={album.id} onClick={() => setSelectedAlbum(album)} className="p-4 cursor-pointer hover:bg-blue-50 transition">
-                    <h3 className="font-bold text-sm text-gray-800">{album.name}</h3>
-                    <p className="text-xs text-gray-500 line-clamp-1 mt-0.5">{album.description || 'Sem descrição'}</p>
-                    <span className="text-[10px] bg-blue-100 text-[#2D68C4] px-2 py-0.5 rounded-full mt-2 inline-block">
-                      {Array.isArray(album.songs) ? album.songs.length : 0} músicas
-                    </span>
-                  </div>
-                ))}
-                {albums.length === 0 && (
-                  <div className="p-6 text-center text-gray-400 text-sm">Nenhum álbum criado.</div>
-                )}
-              </div>
+        {/* Painel Esquerdo */}
+        <aside className={`w-full md:w-96 bg-white border-r flex flex-col ${mobileView === 'viewer' ? 'hidden md:flex' : 'flex'}`}>
+          <div className="p-3 bg-gray-50 border-b flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <input type="text" placeholder="Pesquisar..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full border px-3 py-1.5 rounded text-sm focus:outline-none focus:ring-1 focus:ring-[#2D68C4]" />
+              {activeMenu === 'Albums' && selectedAlbum && userRole === 'admin' && (
+                <button onClick={() => setIsManageAlbumSongsOpen(true)} className="bg-[#2D68C4] hover:bg-blue-700 text-white px-3 py-1.5 rounded text-xs font-bold shrink-0 shadow-sm transition" title="Gerenciar Músicas do Álbum">
+                  + Puxar Músicas
+                </button>
+              )}
             </div>
-          ) : (
-            <div className="flex flex-col h-full">
-              <div className="p-3 border-b border-gray-100 bg-gray-50 flex flex-col gap-2">
-                {activeMenu === 'Albums' && selectedAlbum && (
-                  <div className="flex items-center justify-between bg-blue-50 p-2.5 rounded border border-blue-200">
-                    <div className="truncate pr-2">
-                      <span className="text-xs text-blue-800 font-bold block truncate">Álbum: {selectedAlbum.name}</span>
-                      <span className="text-[10px] text-blue-600">
-                        {Array.isArray(selectedAlbum.songs) ? selectedAlbum.songs.length : 0} música(s)
-                      </span>
+            {activeMenu === 'Albums' && selectedAlbum && (
+              <button onClick={() => setSelectedAlbum(null)} className="text-xs text-[#2D68C4] font-bold text-left hover:underline">
+                ← Voltar para lista de Álbuns
+              </button>
+            )}
+          </div>
+
+          <div className="flex-1 overflow-y-auto divide-y overflow-x-hidden">
+            {activeMenu === 'Albums' && !selectedAlbum ? (
+              albums.length > 0 ? (
+                albums.map(alb => (
+                  <div key={alb.id} onClick={() => setSelectedAlbum(alb)} className="p-4 cursor-pointer hover:bg-blue-50 flex justify-between items-center transition">
+                    <div>
+                      <h3 className="font-bold text-sm text-gray-800">{alb.name}</h3>
+                      <p className="text-xs text-gray-500">{alb.description || 'Sem descrição'}</p>
                     </div>
-                    <div className="flex gap-1.5 shrink-0">
-                      <button
-                        onClick={openPullSongsModal}
-                        className="text-xs bg-[#2D68C4] hover:bg-blue-700 text-white px-2.5 py-1 rounded font-semibold transition"
-                      >
-                        + Puxar
-                      </button>
-                      <button
-                        onClick={() => setSelectedAlbum(null)}
-                        className="text-xs bg-white border border-gray-300 text-gray-700 hover:text-red-600 px-2 py-1 rounded font-bold transition"
-                      >
-                        Voltar
-                      </button>
-                    </div>
+                    <span className="text-xs bg-gray-100 text-gray-600 px-2.5 py-1 rounded-full font-medium">Álbum</span>
                   </div>
-                )}
-                <input
-                  type="text"
-                  placeholder="Pesquisar título ou artista..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full px-3 py-1.5 text-sm bg-white border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#2D68C4] text-gray-800"
-                />
-                <div className="flex gap-2 items-center">
-                  <span className="text-xs text-gray-500 font-medium">Artista:</span>
-                  <select 
-                    value={selectedArtistFilter} 
-                    onChange={(e) => setSelectedArtistFilter(e.target.value)}
-                    className="flex-1 text-xs border rounded px-2 py-1 bg-white text-gray-800"
-                  >
-                    <option value="">Todos os Artistas</option>
-                    {artistsList.map(artist => (
-                      <option key={artist} value={artist}>{artist}</option>
-                    ))}
-                  </select>
+                ))
+              ) : (
+                <div className="p-8 text-center text-gray-400 text-sm">
+                  Nenhum álbum disponível. {userRole === 'admin' ? 'Clique em "+ Novo Álbum" no topo.' : 'Aguarde um convite do Administrador.'}
                 </div>
+              )
+            ) : (
+              filteredSongs.length > 0 ? (
+                filteredSongs.map(s => (
+                  <div key={s.id} onClick={() => handleSelectSong(s)} className={`p-4 cursor-pointer flex justify-between items-center transition ${selectedSong?.id === s.id ? 'bg-blue-50 border-l-4 border-[#2D68C4]' : 'hover:bg-gray-50'}`}>
+                    <div className="truncate pr-2">
+                      <h3 className="font-semibold text-sm text-gray-800 flex items-center gap-1.5 truncate">
+                        {s.is_locked && (
+                          <svg className="w-4 h-4 text-amber-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+                        )}
+                        <span className="truncate">{s.title}</span>
+                      </h3>
+                      <p className="text-xs text-gray-500 truncate">{s.artist}</p>
+                    </div>
+                    <span className="text-xs bg-gray-100 px-2 py-1 rounded font-mono shrink-0 text-gray-600 font-semibold">{s.key}</span>
+                  </div>
+                ))
+              ) : (
+                <div className="p-8 text-center text-gray-400 text-sm">
+                  {activeMenu === 'Albums' && selectedAlbum ? 'Nenhuma música neste álbum ainda. Clique em "+ Puxar Músicas" acima.' : 'Nenhuma cifra encontrada.'}
+                </div>
+              )
+            )}
+          </div>
+        </aside>
+
+        {/* Visualizador Direito */}
+        <section id="song-viewer-container" className={`flex-1 p-3 md:p-6 overflow-y-auto overflow-x-hidden bg-gray-50 flex justify-center ${mobileView === 'list' ? 'hidden md:flex' : 'flex'} ${isFullscreenActive ? 'absolute inset-0 z-50 bg-white p-6' : ''}`}>
+          {selectedSong ? (
+            <div className="w-full max-w-4xl bg-white p-4 md:p-8 rounded-xl border shadow-sm h-fit flex flex-col">
+              <div className="md:hidden mb-3">
+                <button onClick={() => setMobileView('list')} className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold px-3 py-1.5 rounded text-xs transition">
+                  ← Voltar para Lista
+                </button>
               </div>
 
-              <div className="overflow-y-auto flex-1 divide-y divide-gray-100">
-                {filteredSongs.map((song) => (
-                  <div
-                    key={song.id}
-                    onClick={() => handleSelectSong(song)}
-                    className={`p-3 md:p-4 cursor-pointer transition flex justify-between items-center ${
-                      selectedSong?.id === song.id
-                        ? 'bg-blue-50/85 border-l-4 border-[#2D68C4]'
-                        : 'hover:bg-gray-50'
-                    }`}
-                  >
-                    <div>
-                      <h3 className={`font-semibold text-sm ${selectedSong?.id === song.id ? 'text-[#2D68C4]' : 'text-gray-800'}`}>
-                        {song.title}
-                      </h3>
-                      <p className="text-xs text-gray-500 mt-0.5">{song.artist}</p>
+              {/* Verificação de Cadeado para Convidados */}
+              {selectedSong.is_locked && !hasAccessToLocked ? (
+                <div className="flex flex-col items-center justify-center py-20 text-center gap-4">
+                  <svg className="w-12 h-12 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+                  <h3 className="text-lg font-bold text-gray-800">Esta cifra está restrita pelo Administrador</h3>
+                  <p className="text-xs text-gray-500 max-w-sm">Você precisa de autorização do administrador para visualizar o conteúdo desta música.</p>
+                  <button onClick={handleRequestAccess} disabled={hasRequestedAccess} className="bg-[#2D68C4] hover:bg-blue-700 text-white px-5 py-2 rounded font-bold text-sm transition disabled:opacity-50 shadow-sm">
+                    {hasRequestedAccess ? 'Solicitação Enviada (Aguardando)' : 'Solicitar Acesso ao Administrador'}
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="border-b pb-3 mb-3 flex flex-wrap justify-between items-center gap-3">
+                    <div className="min-w-0 flex-1">
+                      <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2 truncate">
+                        <span className="truncate">{selectedSong.title}</span>
+                        {userRole === 'admin' && (
+                          <button onClick={handleToggleLock} className="text-xs px-2.5 py-1 rounded border border-gray-300 hover:bg-gray-50 shrink-0 flex items-center gap-1 font-semibold text-gray-700 transition">
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+                            {selectedSong.is_locked ? 'Trancada' : 'Destrancada'}
+                          </button>
+                        )}
+                      </h2>
+                      <p className="text-gray-600 text-sm truncate">{selectedSong.artist}</p>
+
+                      {/* Controles de Tom e Transposição Unificados */}
+                      <div className="mt-2.5 flex items-center gap-2 flex-wrap">
+                        <span className="bg-blue-50 text-[#2D68C4] border border-blue-200 text-xs px-2.5 py-1 rounded-full font-bold">
+                          Tom: {selectedSong.key}
+                        </span>
+                        <div className="flex items-center gap-1 bg-gray-100 border border-gray-200 px-2 py-1 rounded text-xs font-medium">
+                          <span className="text-gray-600 mr-0.5">Transpor:</span>
+                          <button onClick={() => handleTranspose(-1)} className="px-2 py-0.5 bg-white hover:bg-gray-50 border border-gray-300 rounded shadow-sm font-bold text-gray-700 transition">-</button>
+                          <button onClick={() => handleTranspose(1)} className="px-2 py-0.5 bg-white hover:bg-gray-50 border border-gray-300 rounded shadow-sm font-bold text-gray-700 transition">+</button>
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded font-mono">
-                        {song.key || 'C'}
-                      </span>
-                      {activeMenu === 'Albums' && selectedAlbum && (
-                        <button
-                          onClick={(e) => handleRemoveSongFromAlbum(e, song.id)}
-                          title="Remover do álbum"
-                          className="text-xs text-red-500 hover:bg-red-50 px-1.5 py-1 rounded font-bold"
-                        >
-                          ✕
+
+                    <div className="flex gap-2 items-center flex-wrap shrink-0">
+                      <button onClick={handleFullscreen} className="bg-gray-700 hover:bg-gray-800 text-white px-3 py-1.5 rounded text-xs font-semibold shadow-sm transition">Tela Cheia</button>
+                      {canShare && <button onClick={handleShareSong} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded text-xs font-semibold shadow-sm transition">Compartilhar</button>}
+                      {(userRole === 'admin' || canSaveEdits) && (
+                        <button onClick={() => setIsEditing(!isEditing)} className="bg-[#2D68C4] hover:bg-blue-700 text-white px-3 py-1.5 rounded text-xs font-semibold shadow-sm transition">
+                          {isEditing ? 'Fechar Editor' : 'Editar'}
+                        </button>
+                      )}
+                      {(userRole === 'admin' || selectedSong.user_id === user?.id) && (
+                        <button onClick={handleDeleteSong} className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded text-xs font-semibold shadow-sm transition" title="Excluir Cifra">
+                          Excluir
                         </button>
                       )}
                     </div>
                   </div>
-                ))}
-                {filteredSongs.length === 0 && (
-                  <div className="p-6 text-center text-gray-400 text-sm flex flex-col items-center gap-2">
-                    <span>Nenhuma cifra encontrada.</span>
-                    {activeMenu === 'Albums' && selectedAlbum && (
-                      <button
-                        onClick={openPullSongsModal}
-                        className="mt-2 bg-[#2D68C4] text-white text-xs px-3 py-1.5 rounded font-semibold hover:bg-blue-700"
-                      >
-                        + Puxar músicas de Cifras
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </aside>
 
-        {/* Painel Direito (Visualizador) */}
-        <section id="song-viewer-container" className={`flex-1 p-2 md:p-6 overflow-y-auto bg-gray-50 flex justify-center h-full w-full ${mobileView === 'list' ? 'hidden md:flex' : 'flex'}`}>
-          {selectedSong ? (
-            <div className="w-full max-w-4xl bg-white p-3 md:p-8 rounded-xl border border-gray-200 shadow-sm h-fit flex flex-col">
-              
-              <div className="md:hidden mb-2">
-                <button 
-                  onClick={handleBackToList}
-                  className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold px-3 py-1.5 rounded-md text-xs flex items-center gap-1.5 transition"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
-                  </svg>
-                  <span>Voltar para Lista</span>
-                </button>
-              </div>
-
-              <div className="border-b border-gray-200 pb-3 mb-3 flex flex-wrap justify-between items-center gap-3">
-                <div className="flex-1 min-w-[200px]">
+                  {/* Modo de Edição em Tela Cheia Focada */}
                   {isEditing ? (
-                    <div className="flex flex-col gap-2">
-                      <input type="text" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} className="border px-3 py-1.5 rounded text-lg font-bold text-gray-900 w-full" />
-                      <input type="text" value={editArtist} onChange={(e) => setEditArtist(e.target.value)} className="border px-3 py-1.5 rounded text-sm text-gray-600 w-full" />
-                    </div>
-                  ) : (
-                    <>
-                      <h2 className="text-lg md:text-2xl font-bold text-gray-900 truncate">{selectedSong.title}</h2>
-                      <p className="text-gray-600 text-xs md:text-base font-medium mt-0.5 truncate">{selectedSong.artist}</p>
-                    </>
-                  )}
-
-                  <div className="mt-2.5 flex items-center gap-1.5 md:gap-2 flex-wrap">
-                    <span className="bg-blue-100 text-[#2D68C4] text-[11px] md:text-xs px-2.5 py-1 rounded-full font-semibold">
-                      Tom: {isEditing ? <input type="text" value={editKey} onChange={(e) => setEditKey(e.target.value)} className="w-10 text-center border rounded ml-1 text-black" /> : selectedSong.key}
-                    </span>
-
-                    <div className="flex items-center gap-1 bg-gray-100 px-2 py-0.5 md:py-1 rounded text-xs">
-                      <span className="text-gray-600 mr-0.5">Transpor:</span>
-                      <button onClick={() => handleTranspose(-1)} className="px-2 py-0.5 bg-white rounded shadow-sm font-bold hover:bg-gray-200">-</button>
-                      <button onClick={() => handleTranspose(1)} className="px-2 py-0.5 bg-white rounded shadow-sm font-bold hover:bg-gray-200">+</button>
-                    </div>
-
-                    {!isEditing && (
-                      <div className="flex items-center gap-1.5 bg-gray-100 px-2 py-0.5 md:py-1 rounded text-xs">
-                        <button
-                          onClick={() => setIsAutoScrolling(!isAutoScrolling)}
-                          className={`px-2 py-0.5 rounded font-bold text-white transition ${isAutoScrolling ? 'bg-red-600' : 'bg-green-600'}`}
-                        >
-                          {isAutoScrolling ? 'Parar' : 'Auto'}
-                        </button>
-                        <input type="number" min="1" max="10" value={scrollSpeed} onChange={(e) => setScrollSpeed(Number(e.target.value))} className="w-8 text-center border rounded py-0.5 bg-white" />
+                    <div className="fixed inset-0 z-50 bg-white p-4 md:p-8 flex flex-col gap-4 overflow-y-auto">
+                      <div className="flex justify-between items-center border-b pb-3">
+                        <h3 className="font-bold text-lg text-gray-800">Editando Cifra</h3>
+                        <button onClick={() => setIsEditing(false)} className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold px-3 py-1.5 rounded text-xs transition">✕ Fechar Editor</button>
                       </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {isEditing ? (
-                    <>
-                      <button onClick={handleSaveEdit} className="bg-green-600 text-white px-2.5 py-1.5 rounded text-xs font-semibold">Salvar</button>
-                      <button onClick={() => { setIsEditing(false); initEditState(selectedSong); }} className="bg-gray-300 text-gray-800 px-2.5 py-1.5 rounded text-xs font-semibold">Cancelar</button>
-                    </>
+                      <div className="flex flex-col md:flex-row gap-3">
+                        <input type="text" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} className="border p-2.5 rounded text-sm font-bold flex-1 focus:ring-1 focus:ring-[#2D68C4] focus:outline-none" placeholder="Título" />
+                        <input type="text" value={editKey} onChange={(e) => setEditKey(e.target.value)} className="border p-2.5 rounded text-sm w-full md:w-28 text-center uppercase font-mono focus:ring-1 focus:ring-[#2D68C4] focus:outline-none" placeholder="Tom" />
+                      </div>
+                      <input type="text" value={editArtist} onChange={(e) => setEditArtist(e.target.value)} className="border p-2.5 rounded text-sm focus:ring-1 focus:ring-[#2D68C4] focus:outline-none" placeholder="Artista" />
+                      <textarea value={editContent} onChange={(e) => setEditContent(e.target.value)} className="w-full flex-1 min-h-[50vh] p-4 font-mono text-xs md:text-sm border rounded focus:ring-2 focus:ring-[#2D68C4] focus:outline-none" placeholder="Conteúdo da cifra..." />
+                      <div className="flex justify-end gap-3 pt-2">
+                        <button onClick={() => setIsEditing(false)} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded text-sm font-semibold transition">Cancelar</button>
+                        <button onClick={handleSaveEdit} className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded text-sm font-bold shadow-sm transition">Salvar Alterações</button>
+                      </div>
+                    </div>
                   ) : (
-                    <>
-                      <button
-                        onClick={() => setIsSendToAlbumModalOpen(true)}
-                        className="bg-amber-500 hover:bg-amber-600 text-white px-2.5 py-1.5 rounded text-xs font-semibold transition shadow-sm"
-                        title="Enviar esta cifra para um álbum"
-                      >
-                        + Álbum
-                      </button>
-                      <button onClick={() => setIsEditing(true)} className="bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1.5 rounded text-xs font-semibold transition">Editar</button>
-                      
-                      {/* Botão de Tela Cheia agora visível e responsivo para celulares e PCs */}
-                      <button 
-                        onClick={handleFullscreen} 
-                        className="bg-gray-700 hover:bg-gray-800 text-white px-2.5 py-1.5 rounded text-xs font-semibold transition"
-                        title={isFullscreenActive ? 'Sair da Tela Cheia' : 'Tela Cheia'}
-                      >
-                        {isFullscreenActive ? 'Sair Tela' : 'Tela Cheia'}
-                      </button>
-
-                      <button onClick={handleDownloadSong} className="bg-gray-800 hover:bg-gray-900 text-white px-2.5 py-1.5 rounded text-xs font-semibold transition">TXT</button>
-                      <button onClick={handleDownloadPDF} className="bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1.5 rounded text-xs font-semibold transition shadow-sm">PDF</button>
-                      <button 
-                        onClick={handleDeleteSong} 
-                        className="bg-red-600 hover:bg-red-700 text-white px-2.5 py-1.5 rounded text-xs font-semibold transition flex items-center gap-1 shadow-sm"
-                        title="Excluir Cifra"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2,2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                        <span className="hidden sm:inline">Excluir</span>
-                      </button>
-                    </>
+                    <div ref={scrollContainerRef} className="font-mono text-sm leading-relaxed overflow-y-auto max-h-[60vh] p-2 whitespace-pre-wrap break-words">
+                      {selectedSong.content.split('\n').map((line, idx) => (
+                        <div key={idx} className={isLineOfChords(line) ? 'text-red-600 font-bold' : 'text-gray-800'}>
+                          {line === '' ? '\u00A0' : line}
+                        </div>
+                      ))}
+                    </div>
                   )}
-                </div>
-              </div>
-
-              {isEditing ? (
-                <textarea
-                  value={editContent}
-                  onChange={(e) => setEditContent(e.target.value)}
-                  className="w-full h-80 md:h-96 p-4 font-mono text-sm border rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                />
-              ) : (
-                <div 
-                  ref={scrollContainerRef}
-                  className="bg-white p-2 rounded-lg leading-snug overflow-x-auto font-mono max-h-[58vh] md:max-h-[55vh] overflow-y-auto border border-dashed border-gray-200"
-                >
-                  {renderFormattedContent(selectedSong.content)}
-                </div>
+                </>
               )}
-
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center text-gray-400 p-6 text-center">
-              <p className="text-sm md:text-base font-medium">Selecione uma cifra na lista</p>
-            </div>
+            <div className="flex items-center justify-center text-gray-400">Selecione uma cifra ou álbum</div>
           )}
         </section>
       </div>
+
+      {/* Modal para Gerenciar / Puxar Músicas para o Álbum */}
+      {isManageAlbumSongsOpen && selectedAlbum && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white p-6 rounded-xl shadow-xl max-w-lg w-full flex flex-col gap-4 max-h-[80vh]">
+            <div className="flex justify-between items-center border-b pb-3">
+              <div>
+                <h3 className="font-bold text-lg text-gray-800">Puxar Músicas para o Álbum</h3>
+                <p className="text-xs text-gray-500">{selectedAlbum.name}</p>
+              </div>
+              <button onClick={() => setIsManageAlbumSongsOpen(false)} className="font-bold text-gray-500 hover:text-gray-800" aria-label="Fechar Modal">✕</button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto divide-y border rounded max-h-[50vh]">
+              {songs.map(song => {
+                const isSelectedInAlbum = Array.isArray(selectedAlbum.songs) && selectedAlbum.songs.includes(song.id)
+                return (
+                  <div key={song.id} className="p-3 flex justify-between items-center hover:bg-gray-50 transition">
+                    <div className="truncate pr-2">
+                      <h4 className="font-semibold text-sm text-gray-800 truncate">{song.title}</h4>
+                      <p className="text-xs text-gray-500 truncate">{song.artist}</p>
+                    </div>
+                    <button
+                      onClick={() => handleToggleSongInAlbum(song.id)}
+                      className={`px-3 py-1 rounded text-xs font-bold transition shrink-0 ${isSelectedInAlbum ? 'bg-red-100 text-red-700 hover:bg-red-200' : 'bg-blue-100 text-[#2D68C4] hover:bg-blue-200'}`}
+                    >
+                      {isSelectedInAlbum ? 'Remover' : '+ Adicionar'}
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button onClick={() => setIsManageAlbumSongsOpen(false)} className="px-5 py-2 bg-[#2D68C4] hover:bg-blue-700 text-white rounded text-sm font-bold shadow-sm transition">Concluir</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal para Criar Novo Álbum (Apenas Admin) */}
+      {isAlbumModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <form onSubmit={handleCreateAlbum} className="bg-white p-6 rounded-xl shadow-xl max-w-md w-full flex flex-col gap-4">
+            <h3 className="font-bold text-lg text-gray-800">Criar Novo Álbum</h3>
+            <div>
+              <label className="text-xs font-bold text-gray-700">Nome do Álbum</label>
+              <input type="text" required value={newAlbumName} onChange={(e) => setNewAlbumName(e.target.value)} placeholder="Ex: Repertório Domingo" className="w-full border px-3 py-2 rounded text-sm mt-1 focus:ring-1 focus:ring-[#2D68C4] focus:outline-none" />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-gray-700">Descrição</label>
+              <textarea value={newAlbumDesc} onChange={(e) => setNewAlbumDesc(e.target.value)} placeholder="Breve descrição do álbum..." className="w-full border px-3 py-2 rounded text-sm mt-1 h-20 focus:ring-1 focus:ring-[#2D68C4] focus:outline-none" />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button type="button" onClick={() => setIsAlbumModalOpen(false)} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded text-sm font-semibold transition">Cancelar</button>
+              <button type="submit" className="px-5 py-2 bg-[#2D68C4] hover:bg-blue-700 text-white rounded text-sm font-bold shadow-sm transition">Criar Álbum</button>
+            </div>
+          </form>
+        </div>
+      )}
     </main>
   )
 }
