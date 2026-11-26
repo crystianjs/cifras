@@ -58,6 +58,7 @@ export default function Home() {
   const [hasRequestedAccess, setHasRequestedAccess] = useState(false)
 
   const [searchTerm, setSearchTerm] = useState('')
+  const [modalSearchTerm, setModalSearchTerm] = useState('') // Pesquisa independente para o modal de puxar músicas
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [activeMenu, setActiveMenu] = useState<'Scores' | 'Albums'>('Scores')
   const [mobileView, setMobileView] = useState<'list' | 'viewer'>('list')
@@ -128,7 +129,9 @@ export default function Home() {
     
     if (selectedAlbum && albumsData) {
       const updatedCurrentAlbum = albumsData.find(a => a.id === selectedAlbum.id)
-      if (updatedCurrentAlbum) setSelectedAlbum(updatedCurrentAlbum)
+      if (updatedCurrentAlbum) {
+        setSelectedAlbum(updatedCurrentAlbum)
+      }
     }
 
     if (songsData && songsData.length > 0 && !selectedSong) {
@@ -280,8 +283,10 @@ export default function Home() {
       .eq('id', selectedAlbum.id)
 
     if (!error) {
-      setSelectedAlbum({ ...selectedAlbum, songs: updatedSongs })
-      loadUserData(user)
+      const updatedAlbumObj = { ...selectedAlbum, songs: updatedSongs }
+      setSelectedAlbum(updatedAlbumObj)
+      // Atualiza também na lista geral de álbuns para refletir imediatamente
+      setAlbums(albums.map(a => a.id === updatedAlbumObj.id ? updatedAlbumObj : a))
     } else {
       alert('Erro ao atualizar músicas do álbum: ' + error.message)
     }
@@ -420,6 +425,12 @@ export default function Home() {
     }
     return matchSearch
   })
+
+  // Lista de músicas filtrada exclusivamente pelo campo de busca do modal de "Puxar Músicas"
+  const modalFilteredSongs = songs.filter(s => 
+    s.title.toLowerCase().includes(modalSearchTerm.toLowerCase()) || 
+    s.artist.toLowerCase().includes(modalSearchTerm.toLowerCase())
+  )
 
   return (
     <main className="h-screen w-screen overflow-hidden bg-gray-100 text-gray-900 flex flex-col font-sans relative">
@@ -593,7 +604,7 @@ export default function Home() {
                       </div>
                     </div>
 
-                    {/* Botões de Ação com o botão PDF inclusivo para Admin e Convidados */}
+                    {/* Botões de Ação */}
                     <div className="flex flex-wrap items-center gap-1.5 shrink-0">
                       <button onClick={handleDownloadPDF} className="bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1.5 rounded text-xs font-semibold shadow-sm transition">PDF</button>
                       <button onClick={handleFullscreen} className="bg-gray-700 hover:bg-gray-800 text-white px-2.5 py-1.5 rounded text-xs font-semibold shadow-sm transition">Tela Cheia</button>
@@ -611,7 +622,7 @@ export default function Home() {
                     </div>
                   </div>
 
-                  {/* Modo de Edição em Tela Cheia Focada */}
+                  {/* Modo de Edição */}
                   {isEditing ? (
                     <div className="fixed inset-0 z-50 bg-white p-4 md:p-8 flex flex-col gap-4 overflow-y-auto">
                       <div className="flex justify-between items-center border-b pb-3">
@@ -647,6 +658,61 @@ export default function Home() {
         </section>
       </div>
 
+      {/* Modal para Gerenciar / Puxar Músicas para o Álbum (Com Campo de Pesquisa Independente) */}
+      {isManageAlbumSongsOpen && selectedAlbum && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white p-6 rounded-xl shadow-xl max-w-lg w-full flex flex-col gap-4 max-h-[85vh]">
+            <div className="flex justify-between items-center border-b pb-3">
+              <div>
+                <h3 className="font-bold text-lg text-gray-800">Puxar Músicas para o Álbum</h3>
+                <p className="text-xs text-gray-500">{selectedAlbum.name}</p>
+              </div>
+              <button onClick={() => { setIsManageAlbumSongsOpen(false); setModalSearchTerm(''); }} className="font-bold text-gray-500 hover:text-gray-800" aria-label="Fechar Modal">✕</button>
+            </div>
+
+            {/* Campo de Busca específico do Modal */}
+            <div>
+              <input 
+                type="text" 
+                placeholder="Buscar música pelo nome ou artista..." 
+                value={modalSearchTerm} 
+                onChange={(e) => setModalSearchTerm(e.target.value)} 
+                className="w-full border px-3 py-2 rounded text-sm focus:outline-none focus:ring-1 focus:ring-[#2D68C4]" 
+              />
+            </div>
+
+            <div className="flex-1 overflow-y-auto divide-y border rounded max-h-[45vh]">
+              {modalFilteredSongs.map(song => {
+                const isSelectedInAlbum = Array.isArray(selectedAlbum.songs) && selectedAlbum.songs.includes(song.id)
+                return (
+                  <div key={song.id} className="p-3 flex justify-between items-center hover:bg-gray-50 transition">
+                    <div className="truncate pr-2">
+                      <h4 className="font-semibold text-sm text-gray-800 truncate">{song.title}</h4>
+                      <p className="text-xs text-gray-500 truncate">{song.artist}</p>
+                    </div>
+                    <button
+                      onClick={() => handleToggleSongInAlbum(song.id)}
+                      className={`px-3 py-1 rounded text-xs font-bold transition shrink-0 ${isSelectedInAlbum ? 'bg-red-100 text-red-700 hover:bg-red-200' : 'bg-blue-100 text-[#2D68C4] hover:bg-blue-200'}`}
+                    >
+                      {isSelectedInAlbum ? 'Remover' : '+ Adicionar'}
+                    </button>
+                  </div>
+                )
+              })}
+              {modalFilteredSongs.length === 0 && (
+                <div className="p-6 text-center text-gray-400 text-sm">
+                  Nenhuma música encontrada com esse nome.
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button onClick={() => { setIsManageAlbumSongsOpen(false); setModalSearchTerm(''); }} className="px-5 py-2 bg-[#2D68C4] hover:bg-blue-700 text-white rounded text-sm font-bold shadow-sm transition">Concluir</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal para Importar Cifra */}
       {isImportModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -678,45 +744,6 @@ export default function Home() {
               <button type="submit" className="px-5 py-2 bg-[#2D68C4] hover:bg-blue-700 text-white rounded text-sm font-bold shadow-sm transition">Salvar e Importar</button>
             </div>
           </form>
-        </div>
-      )}
-
-      {/* Modal para Gerenciar / Puxar Músicas para o Álbum */}
-      {isManageAlbumSongsOpen && selectedAlbum && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white p-6 rounded-xl shadow-xl max-w-lg w-full flex flex-col gap-4 max-h-[80vh]">
-            <div className="flex justify-between items-center border-b pb-3">
-              <div>
-                <h3 className="font-bold text-lg text-gray-800">Puxar Músicas para o Álbum</h3>
-                <p className="text-xs text-gray-500">{selectedAlbum.name}</p>
-              </div>
-              <button onClick={() => setIsManageAlbumSongsOpen(false)} className="font-bold text-gray-500 hover:text-gray-800" aria-label="Fechar Modal">✕</button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto divide-y border rounded max-h-[50vh]">
-              {songs.map(song => {
-                const isSelectedInAlbum = Array.isArray(selectedAlbum.songs) && selectedAlbum.songs.includes(song.id)
-                return (
-                  <div key={song.id} className="p-3 flex justify-between items-center hover:bg-gray-50 transition">
-                    <div className="truncate pr-2">
-                      <h4 className="font-semibold text-sm text-gray-800 truncate">{song.title}</h4>
-                      <p className="text-xs text-gray-500 truncate">{song.artist}</p>
-                    </div>
-                    <button
-                      onClick={() => handleToggleSongInAlbum(song.id)}
-                      className={`px-3 py-1 rounded text-xs font-bold transition shrink-0 ${isSelectedInAlbum ? 'bg-red-100 text-red-700 hover:bg-red-200' : 'bg-blue-100 text-[#2D68C4] hover:bg-blue-200'}`}
-                    >
-                      {isSelectedInAlbum ? 'Remover' : '+ Adicionar'}
-                    </button>
-                  </div>
-                )
-              })}
-            </div>
-
-            <div className="flex justify-end pt-2">
-              <button onClick={() => setIsManageAlbumSongsOpen(false)} className="px-5 py-2 bg-[#2D68C4] hover:bg-blue-700 text-white rounded text-sm font-bold shadow-sm transition">Concluir</button>
-            </div>
-          </div>
         </div>
       )}
 
