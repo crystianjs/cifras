@@ -205,6 +205,10 @@ export default function Home() {
     }
   }
 
+  const handleDownloadPDF = () => {
+    window.print()
+  }
+
   const handleImportSong = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!importTitle || !importContent) {
@@ -420,7 +424,7 @@ export default function Home() {
   return (
     <main className="h-screen w-screen overflow-hidden bg-gray-100 text-gray-900 flex flex-col font-sans relative">
       
-      {/* Navbar Superior Otimizada (Apenas Permissões no Menu Lateral, Botão de Importar Mantido) */}
+      {/* Navbar Superior */}
       <header className="bg-[#2D68C4] text-white px-3 md:px-4 py-2.5 flex flex-wrap justify-between items-center shadow-md shrink-0 z-20 gap-2">
         <div className="flex items-center gap-2">
           <button onClick={() => setIsSidebarOpen(true)} className="hover:bg-blue-700 p-1.5 rounded transition" aria-label="Abrir Menu">
@@ -589,8 +593,9 @@ export default function Home() {
                       </div>
                     </div>
 
-                    {/* Botões de Ação Responsivos para Mobile e PC */}
+                    {/* Botões de Ação com o botão PDF inclusivo para Admin e Convidados */}
                     <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                      <button onClick={handleDownloadPDF} className="bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1.5 rounded text-xs font-semibold shadow-sm transition">PDF</button>
                       <button onClick={handleFullscreen} className="bg-gray-700 hover:bg-gray-800 text-white px-2.5 py-1.5 rounded text-xs font-semibold shadow-sm transition">Tela Cheia</button>
                       {canShare && <button onClick={handleShareSong} className="bg-indigo-600 hover:bg-indigo-700 text-white px-2.5 py-1.5 rounded text-xs font-semibold shadow-sm transition">Compartilhar</button>}
                       {(userRole === 'admin' || canSaveEdits) && (
