@@ -108,19 +108,13 @@ export default function Home() {
     return () => document.removeEventListener('fullscreenchange', handleFS)
   }, [router])
 
-  async function loadUserData(authUser: any, role = userRole) {
+    async function loadUserData(authUser: any, role = userRole) {
+    // Se for admin, busca tudo livremente
     let allowedSongsQuery = supabase.from('songs').select('*').order('title')
     let allowedAlbumsQuery = supabase.from('albums').select('*').order('name')
 
-    if (authUser && role !== 'admin') {
-      const { data: invites } = await supabase.from('album_invites').select('album_id, can_save_edits').eq('guest_email', authUser.email)
-      const albumIds = invites?.map(i => i.album_id) || []
-      const canSaveAny = invites?.some(i => i.can_save_edits) || false
-      setCanSaveEdits(canSaveAny)
-
-      allowedAlbumsQuery = supabase.from('albums').select('*').in('id', albumIds.length > 0 ? albumIds : ['00000000-0000-0000-0000-000000000000'])
-    }
-
+    // Se for convidado, ele pode ver todos os álbuns e todas as músicas que não estão trancadas
+    // (As trancadas ele só vê se tiver grant de acesso)
     const { data: songsData } = await allowedSongsQuery
     const { data: albumsData } = await allowedAlbumsQuery
 
