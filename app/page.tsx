@@ -80,8 +80,9 @@ export default function Home() {
   const [editKey, setEditKey] = useState('')
   const [editContent, setEditContent] = useState('')
 
+  // Estados da Rolagem Automática
   const [isAutoScrolling, setIsAutoScrolling] = useState(false)
-  const [scrollSpeed, setScrollSpeed] = useState(3)
+  const [scrollSpeed, setScrollSpeed] = useState(3) // 1 (rápido) a 10 (lento)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const [isFullscreenActive, setIsFullscreenActive] = useState(false)
 
@@ -130,6 +131,7 @@ export default function Home() {
     }
   }
 
+  // Lógica da rolagem automática baseada na velocidade escolhida
   useEffect(() => {
     let interval: any
     if (isAutoScrolling && scrollContainerRef.current) {
@@ -140,7 +142,7 @@ export default function Home() {
             setIsAutoScrolling(false)
           }
         }
-      }, scrollSpeed * 25)
+      }, scrollSpeed * 30)
     }
     return () => clearInterval(interval)
   }, [isAutoScrolling, scrollSpeed])
@@ -354,7 +356,6 @@ export default function Home() {
     }
   }
 
-  // Foco exclusivo na cifra para a tela cheia
   const handleFullscreen = () => {
     const elem = document.getElementById('pure-song-content')
     if (!elem) return
@@ -584,15 +585,30 @@ export default function Home() {
                       </h2>
                       <p className="text-gray-600 text-xs md:text-sm truncate">{selectedSong.artist}</p>
 
-                      {/* Controles de Tom e Transposição Unificados */}
+                      {/* Controles de Tom, Transposição e Rolagem Automática Unificados */}
                       <div className="mt-2 flex items-center gap-2 flex-wrap">
                         <span className="bg-blue-50 text-[#2D68C4] border border-blue-200 text-xs px-2.5 py-1 rounded-full font-bold">
                           Tom: {selectedSong.key}
                         </span>
+                        
                         <div className="flex items-center gap-1 bg-gray-100 border border-gray-200 px-2 py-1 rounded text-xs font-medium">
                           <span className="text-gray-600 mr-0.5">Transpor:</span>
                           <button onClick={() => handleTranspose(-1)} className="px-2 py-0.5 bg-white hover:bg-gray-50 border border-gray-300 rounded shadow-sm font-bold text-gray-700 transition">-</button>
                           <button onClick={() => handleTranspose(1)} className="px-2 py-0.5 bg-white hover:bg-gray-50 border border-gray-300 rounded shadow-sm font-bold text-gray-700 transition">+</button>
+                        </div>
+
+                        {/* Botão de Rolagem Automática (Play/Pause) e Controle de Velocidade */}
+                        <div className="flex items-center gap-1 bg-gray-100 border border-gray-200 px-2 py-1 rounded text-xs font-medium">
+                          <button 
+                            onClick={() => setIsAutoScrolling(!isAutoScrolling)} 
+                            className={`px-2.5 py-0.5 rounded font-bold text-white transition ${isAutoScrolling ? 'bg-amber-600 hover:bg-amber-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}
+                          >
+                            {isAutoScrolling ? '⏸ Pausar' : '▶ Rolagem'}
+                          </button>
+                          <span className="text-gray-600 ml-1">Vel:</span>
+                          <button onClick={() => setScrollSpeed(prev => Math.max(1, prev - 1))} className="px-1.5 py-0.5 bg-white hover:bg-gray-50 border border-gray-300 rounded font-bold text-gray-700" title="Mais Rápido">-</button>
+                          <span className="font-mono font-bold text-gray-800">{scrollSpeed}</span>
+                          <button onClick={() => setScrollSpeed(prev => Math.min(10, prev + 1))} className="px-1.5 py-0.5 bg-white hover:bg-gray-50 border border-gray-300 rounded font-bold text-gray-700" title="Mais Lento">+</button>
                         </div>
                       </div>
                     </div>
@@ -634,7 +650,7 @@ export default function Home() {
                       </div>
                     </div>
                   ) : (
-                    /* Container exclusivo que entra em tela cheia (mostra APENAS a cifra com fundo branco limpo) */
+                    /* Container da Cifra com Rolagem Automática */
                     <div 
                       id="pure-song-content" 
                       ref={scrollContainerRef} 
