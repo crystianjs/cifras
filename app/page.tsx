@@ -80,9 +80,9 @@ export default function Home() {
   const [editKey, setEditKey] = useState('')
   const [editContent, setEditContent] = useState('')
 
-  // Estados da Rolagem Automática
+  // Estados de Rolagem Automática
   const [isAutoScrolling, setIsAutoScrolling] = useState(false)
-  const [scrollSpeed, setScrollSpeed] = useState(3) // 1 (rápido) a 10 (lento)
+  const [scrollSpeed, setScrollSpeed] = useState(3)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const [isFullscreenActive, setIsFullscreenActive] = useState(false)
 
@@ -131,7 +131,6 @@ export default function Home() {
     }
   }
 
-  // Lógica da rolagem automática baseada na velocidade escolhida
   useEffect(() => {
     let interval: any
     if (isAutoScrolling && scrollContainerRef.current) {
@@ -560,8 +559,8 @@ export default function Home() {
                 </button>
               </div>
 
-              {/* Verificação de Cadeado para Convidados */}
-              {selectedSong.is_locked && !hasAccessToLocked ? (
+              {/* Verificação de Cadeado Segura */}
+              {selectedSong.is_locked && userRole !== 'admin' && !hasAccessToLocked ? (
                 <div className="flex flex-col items-center justify-center py-20 text-center gap-4">
                   <svg className="w-12 h-12 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
                   <h3 className="text-lg font-bold text-gray-800">Esta cifra está restrita pelo Administrador</h3>
@@ -597,7 +596,7 @@ export default function Home() {
                           <button onClick={() => handleTranspose(1)} className="px-2 py-0.5 bg-white hover:bg-gray-50 border border-gray-300 rounded shadow-sm font-bold text-gray-700 transition">+</button>
                         </div>
 
-                        {/* Botão de Rolagem Automática (Play/Pause) e Controle de Velocidade */}
+                        {/* Botão de Rolagem Automática e Velocidade */}
                         <div className="flex items-center gap-1 bg-gray-100 border border-gray-200 px-2 py-1 rounded text-xs font-medium">
                           <button 
                             onClick={() => setIsAutoScrolling(!isAutoScrolling)} 
@@ -631,7 +630,7 @@ export default function Home() {
                     </div>
                   </div>
 
-                  {/* Modo de Edição */}
+                  {/* Modo de Edição ou Visualização */}
                   {isEditing ? (
                     <div className="fixed inset-0 z-50 bg-white p-4 md:p-8 flex flex-col gap-4 overflow-y-auto">
                       <div className="flex justify-between items-center border-b pb-3">
@@ -650,7 +649,6 @@ export default function Home() {
                       </div>
                     </div>
                   ) : (
-                    /* Container da Cifra com Rolagem Automática */
                     <div 
                       id="pure-song-content" 
                       ref={scrollContainerRef} 
