@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState } from 'react'
-import { supabase } from '../../lib/supabase'
+import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 
 export default function LoginPage() {
@@ -37,75 +37,66 @@ export default function LoginPage() {
         setMessage('Erro ao entrar: ' + error.message)
       } else {
         router.push('/')
-        router.refresh()
       }
     }
     setLoading(false)
   }
 
   return (
-    <main className="min-h-screen bg-gray-100 flex items-center justify-center p-4 font-sans">
-      <div className="bg-white w-full max-w-md rounded-xl shadow-lg border border-gray-200 overflow-hidden">
-        <div className="bg-[#2D68C4] text-white p-6 text-center">
-          <h1 className="text-2xl font-bold tracking-wide">Meu Cifras</h1>
-          <p className="text-xs text-blue-100 mt-1">
-            {isSignUp ? 'Crie sua conta para gerenciar seu repertório' : 'Acesse seu repertório pessoal'}
-          </p>
-        </div>
+    <main className="h-screen w-screen flex items-center justify-center bg-gray-100 font-sans p-4">
+      <div className="bg-white p-8 rounded-xl shadow-md border border-gray-200 max-w-md w-full flex flex-col gap-4">
+        <h1 className="text-2xl font-bold text-gray-900 text-center">Meu Cifras</h1>
+        <p className="text-xs text-gray-500 text-center -mt-2">Acesse seu repertório pessoal</p>
 
-        <form onSubmit={handleAuth} className="p-6 flex flex-col gap-4">
-          {message && (
-            <div className="p-3 rounded text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200">
-              {message}
-            </div>
-          )}
+        {message && (
+          <div className="p-3 text-xs font-semibold bg-blue-50 text-blue-700 rounded border border-blue-200">
+            {message}
+          </div>
+        )}
 
-          <div className="flex flex-col gap-1">
+        <form onSubmit={handleAuth} className="flex flex-col gap-3">
+          <div>
             <label className="text-xs font-bold text-gray-700">E-mail</label>
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="seu@email.com"
-              className="border border-gray-300 px-3 py-2 rounded-md text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#2D68C4]"
+            <input 
+              type="email" 
+              required 
+              value={email} 
+              onChange={(e) => setEmail(e.target.value)} 
+              placeholder="seu@email.com" 
+              className="w-full border px-3 py-2 rounded text-sm mt-1 focus:ring-1 focus:ring-[#2D68C4] focus:outline-none" 
             />
           </div>
-
-          <div className="flex flex-col gap-1">
+          <div>
             <label className="text-xs font-bold text-gray-700">Senha</label>
-            <input
-              type="password"
-              required
+            <input 
+              type="password" 
+              required 
               minLength={6}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              className="border border-gray-300 px-3 py-2 rounded-md text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#2D68C4]"
+              value={password} 
+              onChange={(e) => setPassword(e.target.value)} 
+              placeholder="••••••••" 
+              className="w-full border px-3 py-2 rounded text-sm mt-1 focus:ring-1 focus:ring-[#2D68C4] focus:outline-none" 
             />
           </div>
 
-          <button
-            type="submit"
+          <button 
+            type="submit" 
             disabled={loading}
-            className="mt-2 bg-[#2D68C4] hover:bg-blue-700 text-white font-bold py-2.5 rounded-md text-sm shadow transition disabled:opacity-50"
+            className="mt-2 bg-[#2D68C4] hover:bg-blue-700 text-white py-2.5 rounded text-sm font-bold shadow transition disabled:opacity-50"
           >
-            {loading ? 'Aguarde...' : isSignUp ? 'Criar Conta' : 'Entrar'}
+            {loading ? 'Carregando...' : (isSignUp ? 'Cadastrar' : 'Entrar')}
           </button>
-
-          <div className="text-center pt-2 border-t border-gray-100">
-            <button
-              type="button"
-              onClick={() => {
-                setIsSignUp(!isSignUp)
-                setMessage('')
-              }}
-              className="text-xs text-[#2D68C4] hover:underline font-semibold"
-            >
-              {isSignUp ? 'Já tem conta? Faça login' : 'Não tem conta? Cadastre-se'}
-            </button>
-          </div>
         </form>
+
+        <div className="text-center pt-2 border-t">
+          <button 
+            type="button" 
+            onClick={() => setIsSignUp(!isSignUp)} 
+            className="text-xs text-[#2D68C4] font-bold hover:underline"
+          >
+            {isSignUp ? 'Já tem conta? Faça login' : 'Não tem conta? Cadastre-se'}
+          </button>
+        </div>
       </div>
     </main>
   )
