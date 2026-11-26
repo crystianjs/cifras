@@ -382,44 +382,45 @@ export default function Home() {
 
   return (
     <main className="h-screen w-screen overflow-hidden bg-gray-100 text-gray-900 flex flex-col font-sans relative">
-      {/* Navbar Superior com Padrão Unificado */}
-      <header className="bg-[#2D68C4] text-white px-4 py-3 flex justify-between items-center shadow-md shrink-0 z-20">
-        <div className="flex items-center gap-3">
-          <button onClick={() => setIsSidebarOpen(true)} className="hover:bg-blue-700 p-2 rounded transition" aria-label="Abrir Menu">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
+      
+      {/* Navbar Superior Otimizada para Mobile */}
+      <header className="bg-[#2D68C4] text-white px-3 md:px-4 py-2.5 flex flex-wrap justify-between items-center shadow-md shrink-0 z-20 gap-2">
+        <div className="flex items-center gap-2">
+          <button onClick={() => setIsSidebarOpen(true)} className="hover:bg-blue-700 p-1.5 rounded transition" aria-label="Abrir Menu">
+            <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
           </button>
-          <h1 className="text-lg font-bold">Meu Cifras</h1>
+          <h1 className="text-base md:text-lg font-bold">Meu Cifras</h1>
           
-          <nav className="flex items-center gap-1 ml-4">
+          <nav className="flex items-center gap-1 ml-2">
             <button 
               onClick={() => { setActiveMenu('Scores'); setSelectedAlbum(null); setMobileView('list'); }}
-              className={`px-3 py-1.5 rounded text-sm font-bold transition ${activeMenu === 'Scores' ? 'bg-white text-[#2D68C4] shadow-sm' : 'text-blue-100 hover:bg-blue-600'}`}
+              className={`px-2.5 py-1 rounded text-xs md:text-sm font-bold transition ${activeMenu === 'Scores' ? 'bg-white text-[#2D68C4] shadow-sm' : 'text-blue-100 hover:bg-blue-600'}`}
             >
               Cifras
             </button>
             <button 
               onClick={() => { setActiveMenu('Albums'); setSelectedAlbum(null); setMobileView('list'); }}
-              className={`px-3 py-1.5 rounded text-sm font-bold transition ${activeMenu === 'Albums' ? 'bg-white text-[#2D68C4] shadow-sm' : 'text-blue-100 hover:bg-blue-600'}`}
+              className={`px-2.5 py-1 rounded text-xs md:text-sm font-bold transition ${activeMenu === 'Albums' ? 'bg-white text-[#2D68C4] shadow-sm' : 'text-blue-100 hover:bg-blue-600'}`}
             >
               Álbuns
             </button>
           </nav>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 ml-auto md:ml-0">
           {userRole === 'admin' && activeMenu === 'Albums' && (
-            <button onClick={() => setIsAlbumModalOpen(true)} className="bg-white text-[#2D68C4] hover:bg-gray-50 px-3 py-1.5 rounded text-xs font-bold shadow transition">
-              + Novo Álbum
+            <button onClick={() => setIsAlbumModalOpen(true)} className="bg-white text-[#2D68C4] hover:bg-gray-50 px-2.5 py-1 rounded text-[11px] md:text-xs font-bold shadow transition">
+              + Álbum
             </button>
           )}
           {userRole === 'admin' && (
-            <button onClick={() => router.push('/permissoes')} className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded text-xs font-semibold shadow flex items-center gap-1.5 transition">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+            <button onClick={() => router.push('/permissoes')} className="bg-purple-600 hover:bg-purple-700 text-white px-2.5 py-1 rounded text-[11px] md:text-xs font-semibold shadow flex items-center gap-1 transition">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
               Permissões
             </button>
           )}
           {canImport && activeMenu === 'Scores' && (
-            <button onClick={() => setIsImportModalOpen(true)} className="bg-white text-[#2D68C4] hover:bg-gray-50 px-3 py-1.5 rounded text-xs font-semibold shadow transition">
+            <button onClick={() => setIsImportModalOpen(true)} className="bg-white text-[#2D68C4] hover:bg-gray-50 px-2.5 py-1 rounded text-[11px] md:text-xs font-semibold shadow transition">
               + Importar
             </button>
           )}
@@ -481,7 +482,7 @@ export default function Home() {
                 ))
               ) : (
                 <div className="p-8 text-center text-gray-400 text-sm">
-                  Nenhum álbum disponível. {userRole === 'admin' ? 'Clique em "+ Novo Álbum" no topo.' : 'Aguarde um convite do Administrador.'}
+                  Nenhum álbum disponível. {userRole === 'admin' ? 'Clique em "+ Álbum" no topo.' : 'Aguarde um convite do Administrador.'}
                 </div>
               )
             ) : (
@@ -510,10 +511,10 @@ export default function Home() {
         </aside>
 
         {/* Visualizador Direito */}
-        <section id="song-viewer-container" className={`flex-1 p-3 md:p-6 overflow-y-auto overflow-x-hidden bg-gray-50 flex justify-center ${mobileView === 'list' ? 'hidden md:flex' : 'flex'} ${isFullscreenActive ? 'absolute inset-0 z-50 bg-white p-6' : ''}`}>
+        <section id="song-viewer-container" className={`flex-1 p-2 md:p-6 overflow-y-auto overflow-x-hidden bg-gray-50 flex justify-center ${mobileView === 'list' ? 'hidden md:flex' : 'flex'} ${isFullscreenActive ? 'absolute inset-0 z-50 bg-white p-4 md:p-6' : ''}`}>
           {selectedSong ? (
-            <div className="w-full max-w-4xl bg-white p-4 md:p-8 rounded-xl border shadow-sm h-fit flex flex-col">
-              <div className="md:hidden mb-3">
+            <div className="w-full max-w-4xl bg-white p-3 md:p-8 rounded-xl border shadow-sm h-fit flex flex-col">
+              <div className="md:hidden mb-2">
                 <button onClick={() => setMobileView('list')} className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold px-3 py-1.5 rounded text-xs transition">
                   ← Voltar para Lista
                 </button>
@@ -531,21 +532,21 @@ export default function Home() {
                 </div>
               ) : (
                 <>
-                  <div className="border-b pb-3 mb-3 flex flex-wrap justify-between items-center gap-3">
+                  <div className="border-b pb-3 mb-3 flex flex-col md:flex-row md:items-center justify-between gap-3">
                     <div className="min-w-0 flex-1">
-                      <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2 truncate">
+                      <h2 className="text-lg md:text-xl font-bold text-gray-900 flex items-center gap-2 truncate">
                         <span className="truncate">{selectedSong.title}</span>
                         {userRole === 'admin' && (
-                          <button onClick={handleToggleLock} className="text-xs px-2.5 py-1 rounded border border-gray-300 hover:bg-gray-50 shrink-0 flex items-center gap-1 font-semibold text-gray-700 transition">
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+                          <button onClick={handleToggleLock} className="text-[11px] px-2 py-0.5 rounded border border-gray-300 hover:bg-gray-50 shrink-0 flex items-center gap-1 font-semibold text-gray-700 transition">
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
                             {selectedSong.is_locked ? 'Trancada' : 'Destrancada'}
                           </button>
                         )}
                       </h2>
-                      <p className="text-gray-600 text-sm truncate">{selectedSong.artist}</p>
+                      <p className="text-gray-600 text-xs md:text-sm truncate">{selectedSong.artist}</p>
 
                       {/* Controles de Tom e Transposição Unificados */}
-                      <div className="mt-2.5 flex items-center gap-2 flex-wrap">
+                      <div className="mt-2 flex items-center gap-2 flex-wrap">
                         <span className="bg-blue-50 text-[#2D68C4] border border-blue-200 text-xs px-2.5 py-1 rounded-full font-bold">
                           Tom: {selectedSong.key}
                         </span>
@@ -557,16 +558,17 @@ export default function Home() {
                       </div>
                     </div>
 
-                    <div className="flex gap-2 items-center flex-wrap shrink-0">
-                      <button onClick={handleFullscreen} className="bg-gray-700 hover:bg-gray-800 text-white px-3 py-1.5 rounded text-xs font-semibold shadow-sm transition">Tela Cheia</button>
-                      {canShare && <button onClick={handleShareSong} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded text-xs font-semibold shadow-sm transition">Compartilhar</button>}
+                    {/* Botões de Ação Responsivos para Mobile e PC */}
+                    <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                      <button onClick={handleFullscreen} className="bg-gray-700 hover:bg-gray-800 text-white px-2.5 py-1.5 rounded text-xs font-semibold shadow-sm transition">Tela Cheia</button>
+                      {canShare && <button onClick={handleShareSong} className="bg-indigo-600 hover:bg-indigo-700 text-white px-2.5 py-1.5 rounded text-xs font-semibold shadow-sm transition">Compartilhar</button>}
                       {(userRole === 'admin' || canSaveEdits) && (
-                        <button onClick={() => setIsEditing(!isEditing)} className="bg-[#2D68C4] hover:bg-blue-700 text-white px-3 py-1.5 rounded text-xs font-semibold shadow-sm transition">
-                          {isEditing ? 'Fechar Editor' : 'Editar'}
+                        <button onClick={() => setIsEditing(!isEditing)} className="bg-[#2D68C4] hover:bg-blue-700 text-white px-2.5 py-1.5 rounded text-xs font-semibold shadow-sm transition">
+                          {isEditing ? 'Fechar' : 'Editar'}
                         </button>
                       )}
                       {(userRole === 'admin' || selectedSong.user_id === user?.id) && (
-                        <button onClick={handleDeleteSong} className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded text-xs font-semibold shadow-sm transition" title="Excluir Cifra">
+                        <button onClick={handleDeleteSong} className="bg-red-600 hover:bg-red-700 text-white px-2.5 py-1.5 rounded text-xs font-semibold shadow-sm transition" title="Excluir Cifra">
                           Excluir
                         </button>
                       )}
@@ -592,7 +594,7 @@ export default function Home() {
                       </div>
                     </div>
                   ) : (
-                    <div ref={scrollContainerRef} className="font-mono text-sm leading-relaxed overflow-y-auto max-h-[60vh] p-2 whitespace-pre-wrap break-words">
+                    <div ref={scrollContainerRef} className="font-mono text-xs md:text-sm leading-relaxed overflow-y-auto max-h-[60vh] p-1 md:p-2 whitespace-pre-wrap break-words">
                       {selectedSong.content.split('\n').map((line, idx) => (
                         <div key={idx} className={isLineOfChords(line) ? 'text-red-600 font-bold' : 'text-gray-800'}>
                           {line === '' ? '\u00A0' : line}
