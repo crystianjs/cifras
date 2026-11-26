@@ -39,6 +39,13 @@ export default function PermissoesPage() {
   const [canSaveEdits, setCanSaveEdits] = useState(false)
   const [loading, setLoading] = useState(true)
 
+  // Estados para o Modal de Novo Usuário
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [newUserEmail, setNewUserEmail] = useState('')
+  const [newUserPassword, setNewUserPassword] = useState('')
+  const [newUserRole, setNewUserRole] = useState<'admin' | 'convidado'>('convidado')
+  const [creatingUser, setCreatingUser] = useState(false)
+
   useEffect(() => {
     async function init() {
       const { data: { user } } = await supabase.auth.getUser()
@@ -93,6 +100,38 @@ export default function PermissoesPage() {
     loadData()
   }
 
+  const handleCreateUser = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newUserEmail || !newUserPassword) {
+      alert('Preencha o e-mail e a senha temporária.')
+      return
+    }
+
+    setCreatingUser(true)
+    const { data, error } = await supabase.auth.signUp({
+      email: newUserEmail.trim(),
+      password: newUserPassword,
+      options: {
+        data: { role: newUserRole }
+      }
+    })
+
+    if (error) {
+      alert('Erro ao criar usuário: ' + error.message)
+    } else {
+      if (data.user) {
+        await supabase.from('profiles').update({ role: newUserRole }).eq('id', data.user.id)
+      }
+      alert(`Usuário ${newUserEmail} criado com sucesso como ${newUserRole}!`)
+      setNewUserEmail('')
+      setNewUserPassword('')
+      setNewUserRole('convidado')
+      setIsModalOpen(false)
+      loadData()
+    }
+    setCreatingUser(false)
+  }
+
   const handleSendInvite = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!inviteEmail || !selectedAlbumId) {
@@ -130,36 +169,47 @@ export default function PermissoesPage() {
       </header>
 
       {/* Abas */}
-      <div className="bg-white border-b border-gray-200 px-6 flex gap-4">
-        <button 
-          onClick={() => setActiveTab('users')} 
-          className={`py-3 text-sm font-bold border-b-2 ${activeTab === 'users' ? 'border-[#2D68C4] text-[#2D68C4]' : 'border-transparent text-gray-500'}`}
-        >
-          Gerenciar Usuários ({profiles.length})
-        </button>
-        <button 
-          onClick={() => setActiveTab('requests')} 
-          className={`py-3 text-sm font-bold border-b-2 flex items-center gap-1.5 ${activeTab === 'requests' ? 'border-[#2D68C4] text-[#2D68C4]' : 'border-transparent text-gray-500'}`}
-        >
-          <span>Solicitações de Cadeado</span>
-          {requests.length > 0 && <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full">{requests.length}</span>}
-        </button>
-        <button 
-          onClick={() => setActiveTab('invites')} 
-          className={`py-3 text-sm font-bold border-b-2 ${activeTab === 'invites' ? 'border-[#2D68C4] text-[#2D68C4]' : 'border-transparent text-gray-500'}`}
-        >
-          Convidar para Álbuns
-        </button>
+      <div className="bg-white border-b border-gray-200 px-6 flex justify-between items-center flex-wrap gap-2">
+        <div className="flex gap-4">
+          <button 
+            onClick={() => setActiveTab('users')} 
+            className={`py-3 text-sm font-bold border-b-2 ${activeTab === 'users' ? 'border-[#2D68C4] text-[#2D68C4]' : 'border-transparent text-gray-500'}`}
+          >
+            Gerenciar Usuários ({profiles.length})
+          </button>
+          <button 
+            onClick={() => setActiveTab('requests')} 
+            className={`py-3 text-sm font-bold border-b-2 flex items-center gap-1.5 ${activeTab === 'requests' ? 'border-[#2D68C4] text-[#2D68C4]' : 'border-transparent text-gray-500'}`}
+          >
+            <span>Solicitações de Cadeado</span>
+            {requests.length > 0 && <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full">{requests.length}</span>}
+          </button>
+          <button 
+            onClick={() => setActiveTab('invites')} 
+            className={`py-3 text-sm font-bold border-b-2 ${activeTab === 'invites' ? 'border-[#2D68C4] text-[#2D68C4]' : 'border-transparent text-gray-500'}`}
+          >
+            Convidar para Álbuns
+          </button>
+        </div>
+
+        {activeTab === 'users' && (
+          <button 
+            onClick={() => setIsModalOpen(true)}
+            className="bg-[#2D68C4] hover:bg-blue-700 text-white text-xs font-bold px-3 py-2 rounded shadow transition flex items-center gap-1.5 my-2"
+          >
+            + Novo Usuário
+          </button>
+        )}
       </div>
 
-      <div className="max-w-5xl w-full mx-auto p-6 flex flex-col gap-6">
+      <div className="max-w-5xl w-full mx-auto p-4 md:p-6 flex flex-col gap-6">
         {activeTab === 'users' && (
-          <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
-            <table className="w-full text-left border-collapse">
+          <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
+            <table className="w-full text-left border-collapse min-w-[600px]">
               <thead>
                 <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase">
                   <th className="p-4">E-mail</th>
-                  <th className="p-4">Cargo / Status</th>
+                  <th className="p-4">Cargo / Status (Bloquear / Liberar)</th>
                   <th className="p-4 text-center">Importar</th>
                   <th className="p-4 text-center">Compartilhar</th>
                 </tr>
@@ -168,7 +218,7 @@ export default function PermissoesPage() {
                 {profiles.map(p => (
                   <tr key={p.id} className="hover:bg-gray-50">
                     <td className="p-4">
-                      <div className="font-semibold text-gray-900 flex items-center gap-2">
+                      <div className="font-semibold text-gray-900 flex items-center gap-2 flex-wrap">
                         <span>{p.email}</span>
                         {p.access_requested && p.role === 'pendente' && (
                           <span className="bg-amber-100 text-amber-800 border border-amber-300 text-[10px] px-2 py-0.5 rounded-full font-bold animate-pulse">
@@ -178,15 +228,20 @@ export default function PermissoesPage() {
                       </div>
                     </td>
                     <td className="p-4">
-                      <select value={p.role} onChange={(e) => handleUpdateRole(p.id, e.target.value)} className="border px-2 py-1 rounded text-xs font-bold bg-white">
-                        <option value="pendente">Pendente</option>
-                        <option value="convidado">Convidado</option>
+                      {/* Ao alterar para 'bloqueado' ou 'pendente', o usuário perde o acesso instantaneamente */}
+                      <select 
+                        value={p.role} 
+                        onChange={(e) => handleUpdateRole(p.id, e.target.value)} 
+                        className={`border px-2 py-1 rounded text-xs font-bold ${p.role === 'bloqueado' ? 'bg-red-50 text-red-700 border-red-300' : p.role === 'pendente' ? 'bg-amber-50 text-amber-700 border-amber-300' : 'bg-white text-gray-800'}`}
+                      >
+                        <option value="pendente">Pendente (Aguardando)</option>
+                        <option value="convidado">Convidado (Liberado)</option>
                         <option value="admin">Administrador</option>
-                        <option value="bloqueado">Bloqueado</option>
+                        <option value="bloqueado">Bloqueado (Sem acesso)</option>
                       </select>
                     </td>
-                    <td className="p-4 text-center"><input type="checkbox" checked={p.can_import} onChange={() => handleTogglePerm(p.id, 'can_import', p.can_import)} /></td>
-                    <td className="p-4 text-center"><input type="checkbox" checked={p.can_share} onChange={() => handleTogglePerm(p.id, 'can_share', p.can_share)} /></td>
+                    <td className="p-4 text-center"><input type="checkbox" checked={p.can_import} onChange={() => handleTogglePerm(p.id, 'can_import', p.can_import)} className="w-4 h-4 accent-[#2D68C4]" /></td>
+                    <td className="p-4 text-center"><input type="checkbox" checked={p.can_share} onChange={() => handleTogglePerm(p.id, 'can_share', p.can_share)} className="w-4 h-4 accent-[#2D68C4]" /></td>
                   </tr>
                 ))}
               </tbody>
@@ -197,7 +252,7 @@ export default function PermissoesPage() {
         {activeTab === 'requests' && (
           <div className="flex flex-col gap-3">
             {requests.map(req => (
-              <div key={req.id} className="bg-white p-4 rounded-xl shadow-sm border flex justify-between items-center">
+              <div key={req.id} className="bg-white p-4 rounded-xl shadow-sm border flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
                 <div>
                   <p className="text-sm font-bold text-gray-800">{req.user_email} quer acessar a cifra:</p>
                   <p className="text-xs text-[#2D68C4] font-semibold mt-0.5">🔒 {req.songs?.title || 'Cifra Restrita'}</p>
@@ -214,7 +269,7 @@ export default function PermissoesPage() {
 
         {activeTab === 'invites' && (
           <form onSubmit={handleSendInvite} className="bg-white p-6 rounded-xl shadow-sm border flex flex-col gap-4 max-w-lg">
-            <h3 className="font-bold text-gray-800 text-base">Convidar Convidado para Álbum</h3>
+            <h3 className="font-bold text-gray-800 text-base">Convidar para Álbum</h3>
             <div>
               <label className="text-xs font-bold text-gray-700">E-mail do Usuário</label>
               <input type="email" required value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} placeholder="convidado@email.com" className="w-full border px-3 py-2 rounded text-sm mt-1" />
@@ -234,6 +289,70 @@ export default function PermissoesPage() {
           </form>
         )}
       </div>
+
+      {/* Modal de Criação de Usuário */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-lg max-w-md w-full p-6 flex flex-col gap-4">
+            <div className="flex justify-between items-center border-b pb-3">
+              <h3 className="font-bold text-gray-800 text-lg">Criar Novo Usuário</h3>
+              <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600 font-bold">✕</button>
+            </div>
+            <form onSubmit={handleCreateUser} className="flex flex-col gap-4">
+              <div>
+                <label className="text-xs font-bold text-gray-700">E-mail</label>
+                <input 
+                  type="email" 
+                  required 
+                  value={newUserEmail} 
+                  onChange={(e) => setNewUserEmail(e.target.value)} 
+                  placeholder="usuario@email.com" 
+                  className="w-full border px-3 py-2 rounded text-sm mt-1" 
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-700">Senha Temporária</label>
+                <input 
+                  type="password" 
+                  required 
+                  minLength={6}
+                  value={newUserPassword} 
+                  onChange={(e) => setNewUserPassword(e.target.value)} 
+                  placeholder="Mínimo de 6 caracteres" 
+                  className="w-full border px-3 py-2 rounded text-sm mt-1" 
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-700">Cargo Inicial</label>
+                <select 
+                  value={newUserRole} 
+                  onChange={(e) => setNewUserRole(e.target.value as 'admin' | 'convidado')} 
+                  className="w-full border px-3 py-2 rounded text-sm mt-1 bg-white font-bold"
+                >
+                  <option value="convidado">Convidado</option>
+                  <option value="admin">Administrador</option>
+                </select>
+              </div>
+              <div className="flex justify-end gap-2 mt-4">
+                <button 
+                  type="button" 
+                  onClick={() => setIsModalOpen(false)} 
+                  className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded text-xs font-bold"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={creatingUser}
+                  className="bg-[#2D68C4] hover:bg-blue-700 text-white px-4 py-2 rounded text-xs font-bold shadow disabled:opacity-50"
+                >
+                  {creatingUser ? 'Criando...' : 'Cadastrar Usuário'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </main>
   )
 }
