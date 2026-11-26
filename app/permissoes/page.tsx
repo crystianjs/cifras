@@ -22,6 +22,14 @@ interface AccessRequest {
   songs?: { title: string }
 }
 
+interface SongAccessGrant {
+  id: string
+  song_id: string
+  user_id: string
+  user_email?: string
+  songs?: { title: string }
+}
+
 interface Album {
   id: string
   name: string
@@ -29,9 +37,10 @@ interface Album {
 
 export default function PermissoesPage() {
   const router = useRouter()
-  const [activeTab, setActiveTab] = useState<'users' | 'requests' | 'invites'>('users')
+  const [activeTab, setActiveTab] = useState<'users' | 'requests' | 'grants' | 'invites'>('users')
   const [profiles, setProfiles] = useState<UserProfile[]>([])
   const [requests, setRequests] = useState<AccessRequest[]>([])
+  const [grants, setGrants] = useState<SongAccessGrant[]>([])
   const [albums, setAlbums] = useState<Album[]>([])
   
   const [inviteEmail, setInviteEmail] = useState('')
@@ -39,7 +48,6 @@ export default function PermissoesPage() {
   const [canSaveEdits, setCanSaveEdits] = useState(false)
   const [loading, setLoading] = useState(true)
 
-  // Estados para o Modal de Novo Usuário
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [newUserEmail, setNewUserEmail] = useState('')
   const [newUserPassword, setNewUserPassword] = useState('')
@@ -68,11 +76,23 @@ export default function PermissoesPage() {
     const { data: profs } = await supabase.from('profiles').select('*').order('email')
     if (profs) setProfiles(profs)
 
-    const { data: reqs } = await supabase
+    const { data: pendReqs } = await supabase
       .from('song_access_requests')
       .select('*, songs(title)')
       .eq('status', 'pendente')
-    if (reqs) setRequests(reqs)
+    if (pendReqs) setRequests(pendReqs)
+
+    const { data: activeGrants } = await supabase
+      .from('song_access_grants')
+      .select('id, song_id, user_id, songs(title)') as { data: any[] | null }
+    
+    if (activeGrants && profs) {
+      const grantsWithEmail = activeGrants.map((g: any) => {
+        const foundProf = (profs as any[]).find(p => p.id === g.user_id)
+        return { ...g, user_email: foundProf?.email || 'Usuário' }
+      })
+      setGrants(grantsWithEmail)
+    }
 
     const { data: albs } = await supabase.from('albums').select('id, name').order('name')
     if (albs) setAlbums(albs)
@@ -100,6 +120,18 @@ export default function PermissoesPage() {
     loadData()
   }
 
+  const handleRevokeGrant = async (grantId: string) => {
+    if (confirm('Tem certeza que deseja bloquear o acesso deste usuário a esta cifra?')) {
+      const { error } = await supabase.from('song_access_grants').delete().eq('id', grantId)
+      if (!error) {
+        alert('Acesso revogado com sucesso!')
+        loadData()
+      } else {
+        alert('Erro ao revogar acesso: ' + error.message)
+      }
+    }
+  }
+
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newUserEmail || !newUserPassword) {
@@ -111,9 +143,7 @@ export default function PermissoesPage() {
     const { data, error } = await supabase.auth.signUp({
       email: newUserEmail.trim(),
       password: newUserPassword,
-      options: {
-        data: { role: newUserRole }
-      }
+      options: { data: { role: newUserRole } }
     })
 
     if (error) {
@@ -143,13 +173,13 @@ export default function PermissoesPage() {
       { album_id: selectedAlbumId, guest_email: inviteEmail.trim(), can_save_edits: canSaveEdits }
     ])
 
-    if (error) {
-      alert('Erro ao enviar convite: ' + error.message)
-    } else {
+    if (!error) {
       alert(`Convite enviado com sucesso para ${inviteEmail}!`)
       setInviteEmail('')
       setSelectedAlbumId('')
       setCanSaveEdits(false)
+    } else {
+      alert('Erro ao enviar convite: ' + error.message)
     }
   }
 
@@ -170,23 +200,29 @@ export default function PermissoesPage() {
 
       {/* Abas */}
       <div className="bg-white border-b border-gray-200 px-6 flex justify-between items-center flex-wrap gap-2">
-        <div className="flex gap-4">
+        <div className="flex gap-4 overflow-x-auto">
           <button 
             onClick={() => setActiveTab('users')} 
-            className={`py-3 text-sm font-bold border-b-2 ${activeTab === 'users' ? 'border-[#2D68C4] text-[#2D68C4]' : 'border-transparent text-gray-500'}`}
+            className={`py-3 text-sm font-bold border-b-2 whitespace-nowrap ${activeTab === 'users' ? 'border-[#2D68C4] text-[#2D68C4]' : 'border-transparent text-gray-500'}`}
           >
             Gerenciar Usuários ({profiles.length})
           </button>
           <button 
             onClick={() => setActiveTab('requests')} 
-            className={`py-3 text-sm font-bold border-b-2 flex items-center gap-1.5 ${activeTab === 'requests' ? 'border-[#2D68C4] text-[#2D68C4]' : 'border-transparent text-gray-500'}`}
+            className={`py-3 text-sm font-bold border-b-2 flex items-center gap-1.5 whitespace-nowrap ${activeTab === 'requests' ? 'border-[#2D68C4] text-[#2D68C4]' : 'border-transparent text-gray-500'}`}
           >
             <span>Solicitações de Cadeado</span>
             {requests.length > 0 && <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full">{requests.length}</span>}
           </button>
           <button 
+            onClick={() => setActiveTab('grants')} 
+            className={`py-3 text-sm font-bold border-b-2 whitespace-nowrap ${activeTab === 'grants' ? 'border-[#2D68C4] text-[#2D68C4]' : 'border-transparent text-gray-500'}`}
+          >
+            Acessos Liberados (Bloquear)
+          </button>
+          <button 
             onClick={() => setActiveTab('invites')} 
-            className={`py-3 text-sm font-bold border-b-2 ${activeTab === 'invites' ? 'border-[#2D68C4] text-[#2D68C4]' : 'border-transparent text-gray-500'}`}
+            className={`py-3 text-sm font-bold border-b-2 whitespace-nowrap ${activeTab === 'invites' ? 'border-[#2D68C4] text-[#2D68C4]' : 'border-transparent text-gray-500'}`}
           >
             Convidar para Álbuns
           </button>
@@ -209,7 +245,7 @@ export default function PermissoesPage() {
               <thead>
                 <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase">
                   <th className="p-4">E-mail</th>
-                  <th className="p-4">Cargo / Status (Bloquear / Liberar)</th>
+                  <th className="p-4">Cargo / Status</th>
                   <th className="p-4 text-center">Importar</th>
                   <th className="p-4 text-center">Compartilhar</th>
                 </tr>
@@ -228,16 +264,15 @@ export default function PermissoesPage() {
                       </div>
                     </td>
                     <td className="p-4">
-                      {/* Ao alterar para 'bloqueado' ou 'pendente', o usuário perde o acesso instantaneamente */}
                       <select 
                         value={p.role} 
                         onChange={(e) => handleUpdateRole(p.id, e.target.value)} 
                         className={`border px-2 py-1 rounded text-xs font-bold ${p.role === 'bloqueado' ? 'bg-red-50 text-red-700 border-red-300' : p.role === 'pendente' ? 'bg-amber-50 text-amber-700 border-amber-300' : 'bg-white text-gray-800'}`}
                       >
-                        <option value="pendente">Pendente (Aguardando)</option>
-                        <option value="convidado">Convidado (Liberado)</option>
+                        <option value="pendente">Pendente</option>
+                        <option value="convidado">Convidado</option>
                         <option value="admin">Administrador</option>
-                        <option value="bloqueado">Bloqueado (Sem acesso)</option>
+                        <option value="bloqueado">Bloqueado</option>
                       </select>
                     </td>
                     <td className="p-4 text-center"><input type="checkbox" checked={p.can_import} onChange={() => handleTogglePerm(p.id, 'can_import', p.can_import)} className="w-4 h-4 accent-[#2D68C4]" /></td>
@@ -267,9 +302,31 @@ export default function PermissoesPage() {
           </div>
         )}
 
+        {activeTab === 'grants' && (
+          <div className="flex flex-col gap-3">
+            <h3 className="font-bold text-gray-800 text-base">Acessos Individuais Liberados</h3>
+            <p className="text-xs text-gray-500 -mt-2">Aqui você pode revogar o acesso de um usuário a uma cifra específica que possui cadeado.</p>
+            {grants.map(grant => (
+              <div key={grant.id} className="bg-white p-4 rounded-xl shadow-sm border flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+                <div>
+                  <p className="text-sm font-bold text-gray-800">{grant.user_email}</p>
+                  <p className="text-xs text-amber-700 font-semibold mt-0.5">🔓 Acesso liberado à cifra: {grant.songs?.title || 'Cifra'}</p>
+                </div>
+                <button 
+                  onClick={() => handleRevokeGrant(grant.id)} 
+                  className="bg-red-600 hover:bg-red-700 text-white text-xs px-3 py-1.5 rounded font-bold transition shadow-sm"
+                >
+                  Bloquear Acesso
+                </button>
+              </div>
+            ))}
+            {grants.length === 0 && <p className="text-center text-gray-400 py-8">Nenhum acesso individual liberado no momento.</p>}
+          </div>
+        )}
+
         {activeTab === 'invites' && (
           <form onSubmit={handleSendInvite} className="bg-white p-6 rounded-xl shadow-sm border flex flex-col gap-4 max-w-lg">
-            <h3 className="font-bold text-gray-800 text-base">Convidar para Álbum</h3>
+            <h3 className="font-bold text-gray-800 text-base">Convidado para Álbum</h3>
             <div>
               <label className="text-xs font-bold text-gray-700">E-mail do Usuário</label>
               <input type="email" required value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} placeholder="convidado@email.com" className="w-full border px-3 py-2 rounded text-sm mt-1" />

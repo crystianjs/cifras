@@ -58,7 +58,7 @@ export default function Home() {
   const [hasRequestedAccess, setHasRequestedAccess] = useState(false)
 
   const [searchTerm, setSearchTerm] = useState('')
-  const [modalSearchTerm, setModalSearchTerm] = useState('') // Pesquisa independente para o modal de puxar músicas
+  const [modalSearchTerm, setModalSearchTerm] = useState('')
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [activeMenu, setActiveMenu] = useState<'Scores' | 'Albums'>('Scores')
   const [mobileView, setMobileView] = useState<'list' | 'viewer'>('list')
@@ -108,13 +108,10 @@ export default function Home() {
     return () => document.removeEventListener('fullscreenchange', handleFS)
   }, [router])
 
-    async function loadUserData(authUser: any, role = userRole) {
-    // Se for admin, busca tudo livremente
+  async function loadUserData(authUser: any, role = userRole) {
     let allowedSongsQuery = supabase.from('songs').select('*').order('title')
     let allowedAlbumsQuery = supabase.from('albums').select('*').order('name')
 
-    // Se for convidado, ele pode ver todos os álbuns e todas as músicas que não estão trancadas
-    // (As trancadas ele só vê se tiver grant de acesso)
     const { data: songsData } = await allowedSongsQuery
     const { data: albumsData } = await allowedAlbumsQuery
 
@@ -279,7 +276,6 @@ export default function Home() {
     if (!error) {
       const updatedAlbumObj = { ...selectedAlbum, songs: updatedSongs }
       setSelectedAlbum(updatedAlbumObj)
-      // Atualiza também na lista geral de álbuns para refletir imediatamente
       setAlbums(albums.map(a => a.id === updatedAlbumObj.id ? updatedAlbumObj : a))
     } else {
       alert('Erro ao atualizar músicas do álbum: ' + error.message)
@@ -358,11 +354,15 @@ export default function Home() {
     }
   }
 
+  // Foco exclusivo na cifra para a tela cheia
   const handleFullscreen = () => {
-    const elem = document.getElementById('song-viewer-container')
+    const elem = document.getElementById('pure-song-content')
     if (!elem) return
-    if (!document.fullscreenElement) elem.requestFullscreen().catch(() => {})
-    else document.exitFullscreen().catch(() => {})
+    if (!document.fullscreenElement) {
+      elem.requestFullscreen().catch(() => {})
+    } else {
+      document.exitFullscreen().catch(() => {})
+    }
   }
 
   const handleShareSong = () => {
@@ -420,7 +420,6 @@ export default function Home() {
     return matchSearch
   })
 
-  // Lista de músicas filtrada exclusivamente pelo campo de busca do modal de "Puxar Músicas"
   const modalFilteredSongs = songs.filter(s => 
     s.title.toLowerCase().includes(modalSearchTerm.toLowerCase()) || 
     s.artist.toLowerCase().includes(modalSearchTerm.toLowerCase())
@@ -551,7 +550,7 @@ export default function Home() {
         </aside>
 
         {/* Visualizador Direito */}
-        <section id="song-viewer-container" className={`flex-1 p-2 md:p-6 overflow-y-auto overflow-x-hidden bg-gray-50 flex justify-center ${mobileView === 'list' ? 'hidden md:flex' : 'flex'} ${isFullscreenActive ? 'absolute inset-0 z-50 bg-white p-4 md:p-6' : ''}`}>
+        <section className={`flex-1 p-2 md:p-6 overflow-y-auto overflow-x-hidden bg-gray-50 flex justify-center ${mobileView === 'list' ? 'hidden md:flex' : 'flex'}`}>
           {selectedSong ? (
             <div className="w-full max-w-4xl bg-white p-3 md:p-8 rounded-xl border shadow-sm h-fit flex flex-col">
               <div className="md:hidden mb-2">
@@ -635,7 +634,15 @@ export default function Home() {
                       </div>
                     </div>
                   ) : (
-                    <div ref={scrollContainerRef} className="font-mono text-xs md:text-sm leading-relaxed overflow-y-auto max-h-[60vh] p-1 md:p-2 whitespace-pre-wrap break-words">
+                    /* Container exclusivo que entra em tela cheia (mostra APENAS a cifra com fundo branco limpo) */
+                    <div 
+                      id="pure-song-content" 
+                      ref={scrollContainerRef} 
+                      className="font-mono text-xs md:text-sm leading-relaxed overflow-y-auto max-h-[60vh] p-2 md:p-4 whitespace-pre-wrap break-words bg-white [&:fullscreen]:h-screen [&:fullscreen]:max-h-none [&:fullscreen]:w-screen [&:fullscreen]:flex [&:fullscreen]:flex-col [&:fullscreen]:justify-start [&:fullscreen]:p-8 [&:fullscreen]:text-base"
+                    >
+                      <div className="hidden [&:fullscreen]:block mb-4 border-b pb-2">
+                        <h2 className="text-xl font-bold">{selectedSong.title} - {selectedSong.artist} (Tom: {selectedSong.key})</h2>
+                      </div>
                       {selectedSong.content.split('\n').map((line, idx) => (
                         <div key={idx} className={isLineOfChords(line) ? 'text-red-600 font-bold' : 'text-gray-800'}>
                           {line === '' ? '\u00A0' : line}
@@ -652,7 +659,7 @@ export default function Home() {
         </section>
       </div>
 
-      {/* Modal para Gerenciar / Puxar Músicas para o Álbum (Com Campo de Pesquisa Independente) */}
+      {/* Modal para Gerenciar / Puxar Músicas para o Álbum */}
       {isManageAlbumSongsOpen && selectedAlbum && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="bg-white p-6 rounded-xl shadow-xl max-w-lg w-full flex flex-col gap-4 max-h-[85vh]">
@@ -664,7 +671,6 @@ export default function Home() {
               <button onClick={() => { setIsManageAlbumSongsOpen(false); setModalSearchTerm(''); }} className="font-bold text-gray-500 hover:text-gray-800" aria-label="Fechar Modal">✕</button>
             </div>
 
-            {/* Campo de Busca específico do Modal */}
             <div>
               <input 
                 type="text" 
