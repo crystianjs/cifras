@@ -2,3 +2,15 @@ node_modules/
 .next/
 .env.local
 .DS_Store
+
+# Dependências
+/node_modules
+
+# Build do Next.js e Capacitor
+/.next
+/out
+/dist
+
+# Pastas nativas do Capacitor (Opcional, mas recomendado se preferir gerar o nativo via CI/CD ou máquina local)
+# /android
+# /ios
