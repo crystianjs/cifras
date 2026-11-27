@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
+import { createClient } from '@supabase/supabase-js'
 import { supabase } from '../../lib/supabase'
 import { useRouter } from 'next/navigation'
 
@@ -35,6 +36,11 @@ interface Album {
   name: string
 }
 
+interface ToastNotification {
+  text: string
+  type: 'success' | 'error' | 'info'
+}
+
 export default function PermissoesPage() {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<'users' | 'requests' | 'grants' | 'invites'>('users')
@@ -48,20 +54,33 @@ export default function PermissoesPage() {
   const [canSaveEdits, setCanSaveEdits] = useState(false)
   const [loading, setLoading] = useState(true)
 
+  const [toast, setToast] = useState<ToastNotification | null>(null)
+
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [newUserEmail, setNewUserEmail] = useState('')
   const [newUserPassword, setNewUserPassword] = useState('')
   const [newUserRole, setNewUserRole] = useState<'admin' | 'convidado'>('convidado')
   const [creatingUser, setCreatingUser] = useState(false)
 
+  const showToast = (text: string, type: 'success' | 'error' | 'info' = 'success') => {
+    setToast({ text, type })
+  }
+
+  useEffect(() => {
+    if (!toast) return
+    const timer = setTimeout(() => {
+      setToast(null)
+    }, 5000)
+    return () => clearTimeout(timer)
+  }, [toast])
+
   useEffect(() => {
     async function init() {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { router.push('/login'); return }
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.user) { router.push('/login'); return }
 
-      const { data: myProf } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+      const { data: myProf } = await supabase.from('profiles').select('role').eq('id', session.user.id).single()
       if (myProf?.role !== 'admin') {
-        alert('Acesso negado. Apenas administradores.')
         router.push('/')
         return
       }
@@ -101,21 +120,29 @@ export default function PermissoesPage() {
   }
 
   const handleUpdateRole = async (id: string, role: string) => {
-    await supabase.from('profiles').update({ role }).eq('id', id)
-    loadData()
+    const { error } = await supabase.from('profiles').update({ role }).eq('id', id)
+    if (!error) {
+      showToast('Status do usuário atualizado.', 'success')
+      loadData()
+    }
   }
 
   const handleTogglePerm = async (id: string, field: string, val: boolean) => {
-    await supabase.from('profiles').update({ [field]: !val }).eq('id', id)
-    loadData()
+    const { error } = await supabase.from('profiles').update({ [field]: !val }).eq('id', id)
+    if (!error) {
+      showToast('Permissão atualizada.', 'info')
+      loadData()
+    }
   }
 
   const handleResolveRequest = async (reqId: string, songId: string, userId: string, approve: boolean) => {
     if (approve) {
       await supabase.from('song_access_grants').insert([{ song_id: songId, user_id: userId }])
       await supabase.from('song_access_requests').update({ status: 'aprovado' }).eq('id', reqId)
+      showToast('Acesso à cifra aprovado.', 'success')
     } else {
       await supabase.from('song_access_requests').update({ status: 'recusado' }).eq('id', reqId)
+      showToast('Solicitação recusada.', 'info')
     }
     loadData()
   }
@@ -124,22 +151,22 @@ export default function PermissoesPage() {
     if (confirm('Tem certeza que deseja bloquear o acesso deste usuário a esta cifra?')) {
       const { error } = await supabase.from('song_access_grants').delete().eq('id', grantId)
       if (!error) {
-        alert('Acesso revogado com sucesso!')
+        showToast('Acesso à cifra bloqueado com sucesso.', 'success')
         loadData()
       } else {
-        alert('Erro ao revogar acesso: ' + error.message)
+        showToast('Erro ao bloquear acesso.', 'error')
       }
     }
   }
 
   const handleDeleteUser = async (userId: string, userEmail: string) => {
-    if (confirm(`Tem certeza que deseja excluir o usuário ${userEmail}? Esta ação removerá o perfil do sistema.`)) {
+    if (confirm(`Tem certeza que deseja remover o usuário ${userEmail}?`)) {
       const { error } = await supabase.from('profiles').delete().eq('id', userId)
       if (!error) {
-        alert('Usuário removido com sucesso!')
+        showToast('Usuário removido do sistema.', 'success')
         loadData()
       } else {
-        alert('Erro ao remover usuário: ' + error.message)
+        showToast('Não foi possível remover o usuário.', 'error')
       }
     }
   }
@@ -147,24 +174,31 @@ export default function PermissoesPage() {
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newUserEmail || !newUserPassword) {
-      alert('Preencha o e-mail e a senha temporária.')
+      showToast('Preencha o e-mail e a senha temporária.', 'error')
       return
     }
 
     setCreatingUser(true)
-    const { data, error } = await supabase.auth.signUp({
+
+    const tempSupabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { auth: { persistSession: false, autoRefreshToken: false } }
+    )
+
+    const { data, error } = await tempSupabase.auth.signUp({
       email: newUserEmail.trim(),
       password: newUserPassword,
       options: { data: { role: newUserRole } }
     })
 
     if (error) {
-      alert('Erro ao criar usuário: ' + error.message)
+      showToast('Erro ao criar usuário. Verifique o e-mail ou tente mais tarde.', 'error')
     } else {
       if (data.user) {
         await supabase.from('profiles').update({ role: newUserRole }).eq('id', data.user.id)
       }
-      alert(`Usuário ${newUserEmail} criado com sucesso e pronto para uso!`)
+      showToast(`Usuário ${newUserEmail} cadastrado e pronto para acesso.`, 'success')
       setNewUserEmail('')
       setNewUserPassword('')
       setNewUserRole('convidado')
@@ -177,7 +211,7 @@ export default function PermissoesPage() {
   const handleSendInvite = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!inviteEmail || !selectedAlbumId) {
-      alert('Preencha o e-mail e selecione o álbum.')
+      showToast('Preencha o e-mail e selecione o álbum.', 'error')
       return
     }
 
@@ -186,58 +220,102 @@ export default function PermissoesPage() {
     ])
 
     if (!error) {
-      alert(`Convite enviado com sucesso para ${inviteEmail}!`)
+      showToast(`Convite enviado para ${inviteEmail}.`, 'success')
       setInviteEmail('')
       setSelectedAlbumId('')
       setCanSaveEdits(false)
     } else {
-      alert('Erro ao enviar convite: ' + error.message)
+      showToast('Não foi possível enviar o convite.', 'error')
     }
   }
 
   if (loading) {
-    return <div className="h-screen flex items-center justify-center font-semibold text-gray-600">Carregando painel administrativo...</div>
+    return (
+      <div className="h-screen flex items-center justify-center bg-gray-100">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-4 border-red-600 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-sm font-semibold text-gray-600">Carregando painel administrativo...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
-    <main className="min-h-screen bg-gray-100 text-gray-900 flex flex-col font-sans">
-      <header className="bg-[#2D68C4] text-white px-6 py-3 flex justify-between items-center shadow-md">
+    <main className="min-h-screen bg-gray-100 text-gray-900 flex flex-col font-sans relative">
+      
+      {/* Notificação Flutuante (Toast de 5 segundos) */}
+      {toast && (
+        <div className="fixed bottom-5 right-5 z-50 max-w-sm w-full px-4 pointer-events-none">
+          <div className={`p-3.5 rounded-xl shadow-lg border flex items-center gap-3 pointer-events-auto transition-all ${
+            toast.type === 'success' 
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
+              : toast.type === 'error'
+              ? 'bg-red-50 border-red-200 text-red-800'
+              : 'bg-blue-50 border-blue-200 text-blue-700'
+          }`}>
+            {toast.type === 'success' && (
+              <svg className="w-5 h-5 text-emerald-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
+              </svg>
+            )}
+            {toast.type === 'error' && (
+              <svg className="w-5 h-5 text-red-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            )}
+            {toast.type === 'info' && (
+              <svg className="w-5 h-5 text-blue-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            )}
+            <span className="text-xs font-bold flex-1">{toast.text}</span>
+            <button onClick={() => setToast(null)} className="opacity-60 hover:opacity-100 p-0.5" aria-label="Fechar aviso">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Header com tom Vermelho Profissional */}
+      <header className="bg-red-600 text-white px-6 py-3 flex justify-between items-center shadow-md">
         <div className="flex items-center gap-3">
-          <button onClick={() => router.push('/')} className="bg-blue-700 hover:bg-blue-800 px-3 py-1.5 rounded text-xs font-bold transition flex items-center gap-1.5">
+          <button onClick={() => router.push('/')} className="bg-red-700 hover:bg-red-800 px-3 py-1.5 rounded text-xs font-bold transition flex items-center gap-1.5">
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
             </svg>
-            Voltar para Cifras
+            <span>Voltar para Cifras</span>
           </button>
           <h1 className="text-xl font-bold">Painel do Administrador</h1>
         </div>
       </header>
 
-      {/* Abas */}
+      {/* Abas com destaque em Vermelho */}
       <div className="bg-white border-b border-gray-200 px-6 flex justify-between items-center flex-wrap gap-2">
         <div className="flex gap-4 overflow-x-auto">
           <button 
             onClick={() => setActiveTab('users')} 
-            className={`py-3 text-sm font-bold border-b-2 whitespace-nowrap ${activeTab === 'users' ? 'border-[#2D68C4] text-[#2D68C4]' : 'border-transparent text-gray-500'}`}
+            className={`py-3 text-sm font-bold border-b-2 whitespace-nowrap ${activeTab === 'users' ? 'border-red-600 text-red-600' : 'border-transparent text-gray-500'}`}
           >
             Gerenciar Usuários ({profiles.length})
           </button>
           <button 
             onClick={() => setActiveTab('requests')} 
-            className={`py-3 text-sm font-bold border-b-2 flex items-center gap-1.5 whitespace-nowrap ${activeTab === 'requests' ? 'border-[#2D68C4] text-[#2D68C4]' : 'border-transparent text-gray-500'}`}
+            className={`py-3 text-sm font-bold border-b-2 flex items-center gap-1.5 whitespace-nowrap ${activeTab === 'requests' ? 'border-red-600 text-red-600' : 'border-transparent text-gray-500'}`}
           >
             <span>Solicitações de Cadeado</span>
-            {requests.length > 0 && <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full">{requests.length}</span>}
+            {requests.length > 0 && <span className="bg-red-600 text-white text-[10px] px-2 py-0.5 rounded-full">{requests.length}</span>}
           </button>
           <button 
             onClick={() => setActiveTab('grants')} 
-            className={`py-3 text-sm font-bold border-b-2 whitespace-nowrap ${activeTab === 'grants' ? 'border-[#2D68C4] text-[#2D68C4]' : 'border-transparent text-gray-500'}`}
+            className={`py-3 text-sm font-bold border-b-2 whitespace-nowrap ${activeTab === 'grants' ? 'border-red-600 text-red-600' : 'border-transparent text-gray-500'}`}
           >
             Acessos Liberados (Bloquear)
           </button>
           <button 
             onClick={() => setActiveTab('invites')} 
-            className={`py-3 text-sm font-bold border-b-2 whitespace-nowrap ${activeTab === 'invites' ? 'border-[#2D68C4] text-[#2D68C4]' : 'border-transparent text-gray-500'}`}
+            className={`py-3 text-sm font-bold border-b-2 whitespace-nowrap ${activeTab === 'invites' ? 'border-red-600 text-red-600' : 'border-transparent text-gray-500'}`}
           >
             Convidar para Álbuns
           </button>
@@ -246,12 +324,12 @@ export default function PermissoesPage() {
         {activeTab === 'users' && (
           <button 
             onClick={() => setIsModalOpen(true)}
-            className="bg-[#2D68C4] hover:bg-blue-700 text-white text-xs font-bold px-3 py-2 rounded shadow transition flex items-center gap-1.5 my-2"
+            className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-3 py-2 rounded shadow transition flex items-center gap-1.5 my-2"
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4" />
             </svg>
-            Novo Usuário
+            <span>Novo Usuário</span>
           </button>
         )}
       </div>
@@ -294,8 +372,8 @@ export default function PermissoesPage() {
                         <option value="bloqueado">Bloqueado</option>
                       </select>
                     </td>
-                    <td className="p-4 text-center"><input type="checkbox" checked={p.can_import} onChange={() => handleTogglePerm(p.id, 'can_import', p.can_import)} className="w-4 h-4 accent-[#2D68C4]" /></td>
-                    <td className="p-4 text-center"><input type="checkbox" checked={p.can_share} onChange={() => handleTogglePerm(p.id, 'can_share', p.can_share)} className="w-4 h-4 accent-[#2D68C4]" /></td>
+                    <td className="p-4 text-center"><input type="checkbox" checked={p.can_import} onChange={() => handleTogglePerm(p.id, 'can_import', p.can_import)} className="w-4 h-4 accent-red-600" /></td>
+                    <td className="p-4 text-center"><input type="checkbox" checked={p.can_share} onChange={() => handleTogglePerm(p.id, 'can_share', p.can_share)} className="w-4 h-4 accent-red-600" /></td>
                     <td className="p-4 text-center">
                       <button 
                         onClick={() => handleDeleteUser(p.id, p.email)} 
@@ -305,7 +383,7 @@ export default function PermissoesPage() {
                         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                         </svg>
-                        Remover
+                        <span>Remover</span>
                       </button>
                     </td>
                   </tr>
@@ -321,7 +399,7 @@ export default function PermissoesPage() {
               <div key={req.id} className="bg-white p-4 rounded-xl shadow-sm border flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
                 <div>
                   <p className="text-sm font-bold text-gray-800">{req.user_email} quer acessar a cifra:</p>
-                  <p className="text-xs text-[#2D68C4] font-semibold mt-0.5 flex items-center gap-1.5">
+                  <p className="text-xs text-red-600 font-semibold mt-0.5 flex items-center gap-1.5">
                     <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                     </svg>
@@ -380,10 +458,10 @@ export default function PermissoesPage() {
               </select>
             </div>
             <div className="flex items-center gap-2 pt-1">
-              <input type="checkbox" id="canSave" checked={canSaveEdits} onChange={(e) => setCanSaveEdits(e.target.checked)} className="w-4 h-4 accent-[#2D68C4]" />
+              <input type="checkbox" id="canSave" checked={canSaveEdits} onChange={(e) => setCanSaveEdits(e.target.checked)} className="w-4 h-4 accent-red-600" />
               <label htmlFor="canSave" className="text-xs font-medium text-gray-700 cursor-pointer">Permitir que este usuário salve edições feitas na cifra</label>
             </div>
-            <button type="submit" className="mt-2 bg-[#2D68C4] text-white py-2 rounded text-sm font-bold hover:bg-blue-700 shadow">Enviar Convite</button>
+            <button type="submit" className="mt-2 bg-red-600 text-white py-2 rounded text-sm font-bold hover:bg-red-700 shadow">Enviar Convite</button>
           </form>
         )}
       </div>
@@ -446,7 +524,7 @@ export default function PermissoesPage() {
                 <button 
                   type="submit" 
                   disabled={creatingUser}
-                  className="bg-[#2D68C4] hover:bg-blue-700 text-white px-4 py-2 rounded text-xs font-bold shadow disabled:opacity-50"
+                  className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded text-xs font-bold shadow disabled:opacity-50"
                 >
                   {creatingUser ? 'Criando...' : 'Cadastrar Usuário'}
                 </button>

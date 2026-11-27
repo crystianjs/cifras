@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 
@@ -9,25 +9,32 @@ export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
-  const [message, setMessage] = useState('')
+  const [errorMessage, setErrorMessage] = useState('')
+
+  useEffect(() => {
+    if (!errorMessage) return
+    const timer = setTimeout(() => {
+      setErrorMessage('')
+    }, 5000)
+    return () => clearTimeout(timer)
+  }, [errorMessage])
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
-    setMessage('')
+    setErrorMessage('')
 
     const { error } = await supabase.auth.signInWithPassword({
-      email,
+      email: email.trim(),
       password,
     })
 
     if (error) {
-      setMessage('Erro ao entrar: ' + error.message)
+      setErrorMessage('E-mail ou senha incorretos. Verifique seus dados e tente novamente.')
+      setLoading(false)
     } else {
       router.push('/')
     }
-
-    setLoading(false)
   }
 
   return (
@@ -45,12 +52,15 @@ export default function LoginPage() {
 
         <div className="text-center w-full">
           <h1 className="text-2xl font-bold text-gray-900">Meu Cifras</h1>
-          <p className="text-xs text-gray-500 mt-1">Louvores e Músicas</p>
+          <p className="text-xs text-gray-500 mt-1">Louvor e Cifras ao Senhor</p>
         </div>
 
-        {message && (
-          <div className="w-full p-3 text-xs font-semibold bg-red-50 text-red-700 rounded border border-red-200 text-center">
-            {message}
+        {errorMessage && (
+          <div className="w-full p-3 text-xs font-semibold bg-red-50 text-red-700 rounded-lg border border-red-200 flex items-center gap-2.5 shadow-sm transition-all">
+            <svg className="w-4 h-4 text-red-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span>{errorMessage}</span>
           </div>
         )}
 
@@ -82,15 +92,22 @@ export default function LoginPage() {
           <button 
             type="submit" 
             disabled={loading}
-            className="mt-2 bg-[#2D68C4] hover:bg-blue-700 text-white py-2.5 rounded text-sm font-bold shadow transition disabled:opacity-50 w-full"
+            className="mt-2 bg-[#2D68C4] hover:bg-blue-700 text-white py-2.5 rounded text-sm font-bold shadow transition disabled:opacity-50 w-full flex items-center justify-center gap-2"
           >
-            {loading ? 'Carregando...' : 'Entrar'}
+            {loading ? (
+              <>
+                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                <span>Entrando...</span>
+              </>
+            ) : (
+              <span>Entrar</span>
+            )}
           </button>
         </form>
 
         <div className="text-center pt-3 border-t w-full">
           <p className="text-xs text-gray-500 font-medium">
-            Não possui acesso? <br></br><span className="text-gray-700 font-bold">Entre em contato com um administrador (15) 9811-49404.</span>
+            Não possui acesso? <span className="text-gray-700 font-bold">Entre em contato com um administrador.</span>
           </p>
         </div>
       </div>
