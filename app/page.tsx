@@ -29,7 +29,6 @@ interface ToastNotification {
 const NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 
 function transposeChord(chord: string, semitones: number): string {
-  // Regex aprimorada para capturar notas e sufixos complexos, incluindo 7M, maj7, etc.
   const match = chord.match(/^([A-G][#b]?)(.*)$/)
   if (!match) return chord
   let [, baseNote, modifier] = match
@@ -40,14 +39,6 @@ function transposeChord(chord: string, semitones: number): string {
   index = (index + semitones + 12) % 12
   return NOTES[index] + modifier
 }
-
-function isLineOfChords(line: string): boolean {
-  if (!line || line.trim() === '') return false
-  const words = line.trim().split(/\s+/)
-  // Regex blindada para qualquer acorde padrão, com 7M, maj7, comissões de baixo (ex: F7M, C#7M/G#)
-  const chordRegex = /^[A-G][#b]?(?:m|maj|min|dim|aug|sus|7M|M7|6|7|9|11|13)?(?:\d+)?(?:\/[A-G][#b]?)?$/
-  return words.length > 0 && words.every(word => chordRegex.test(word))
-} 
 
 export default function Home() {
   const router = useRouter()
@@ -60,6 +51,9 @@ export default function Home() {
   const [accessRequested, setAccessRequested] = useState(false)
 
   const [toast, setToast] = useState<ToastNotification | null>(null)
+
+  // Estado para Fundo Personalizado (Celular/Internet)
+  const [customBg, setCustomBg] = useState<string>('')
 
   const [songs, setSongs] = useState<Song[]>([])
   const [albums, setAlbums] = useState<Album[]>([])
@@ -227,16 +221,18 @@ export default function Home() {
     const newKey = transposeChord(currentKey, semitones)
 
     const transposedContent = currentContent.split('\n').map(line => {
-      if (isLineOfChords(line)) {
-        return line.replace(/[A-G][#b]?(?:m|maj|min|dim|aug|sus|7M|M7)?(?:\d+)?(?:\/[A-G][#b]?)?/g, match => {
-          if (match.includes('/')) {
-            const parts = match.split('/')
-            return `${transposeChord(parts[0], semitones)}/${transposeChord(parts[1], semitones)}`
+      const parts = line.split(/(\s+)/)
+      return parts.map(part => {
+        const chordRegex = /^([A-G][#b]?)(m|maj|min|dim|aug|sus|7M|M7|6|7|9|11|13)?(\d+)?(\/[A-G][#b]?)?$/
+        if (chordRegex.test(part.trim())) {
+          if (part.includes('/')) {
+            const subparts = part.split('/')
+            return `${transposeChord(subparts[0], semitones)}/${transposeChord(subparts[1], semitones)}`
           }
-          return transposeChord(match, semitones)
-        })
-      }
-      return line
+          return transposeChord(part, semitones)
+        }
+        return part
+      }).join('')
     }).join('\n')
 
     if (isEditing) {
@@ -436,6 +432,21 @@ export default function Home() {
     router.push('/login')
   }
 
+  // Função para tratar upload de imagem do celular/computador como fundo
+  const handleBgUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      const reader = new FileReader()
+      reader.onload = (uploadEvent) => {
+        if (uploadEvent.target?.result) {
+          setCustomBg(uploadEvent.target.result as string)
+          showToast('Plano de fundo aplicado com sucesso.', 'success')
+        }
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+
   if (isLoadingAuth) {
     return (
       <main className="h-screen w-screen overflow-hidden bg-gray-100 flex items-center justify-center font-sans">
@@ -501,7 +512,10 @@ export default function Home() {
   )
 
   return (
-    <main className="h-screen w-screen overflow-hidden bg-gray-100 text-gray-900 flex flex-col font-sans relative">
+    <main 
+      className="h-screen w-screen overflow-hidden text-gray-900 flex flex-col font-sans relative bg-gray-100"
+      style={customBg ? { backgroundImage: `url(${customBg})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}
+    >
       
       {/* Notificação Flutuante (Toast de 5 segundos) */}
       {toast && (
@@ -539,7 +553,7 @@ export default function Home() {
       )}
 
       {/* Navbar Superior */}
-      <header className="bg-[#2D68C4] text-white px-3 md:px-4 py-2.5 flex flex-wrap justify-between items-center shadow-md shrink-0 z-20 gap-2">
+      <header className="bg-[#2D68C4]/95 backdrop-blur text-white px-3 md:px-4 py-2.5 flex flex-wrap justify-between items-center shadow-md shrink-0 z-20 gap-2">
         <div className="flex items-center gap-2">
           <button onClick={() => setIsSidebarOpen(true)} className="hover:bg-blue-700 p-1.5 rounded transition" aria-label="Abrir Menu">
             <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
@@ -589,9 +603,23 @@ export default function Home() {
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
+            
             <nav className="flex flex-col gap-1">
               <button onClick={() => { setActiveMenu('Scores'); setSelectedAlbum(null); setIsSidebarOpen(false); }} className={`p-3 rounded text-left font-semibold text-sm transition ${activeMenu === 'Scores' ? 'bg-blue-50 text-[#2D68C4]' : 'hover:bg-gray-50'}`}>Cifras</button>
               <button onClick={() => { setActiveMenu('Albums'); setSelectedAlbum(null); setIsSidebarOpen(false); }} className={`p-3 rounded text-left font-semibold text-sm transition ${activeMenu === 'Albums' ? 'bg-blue-50 text-[#2D68C4]' : 'hover:bg-gray-50'}`}>Álbuns</button>
+              
+              {/* Botão de Fundo Personalizado no Menu */}
+              <label className="p-3 rounded text-left font-semibold text-sm text-gray-700 hover:bg-gray-50 transition cursor-pointer flex items-center justify-between">
+                <span>Alterar Fundo (Celular/Web)</span>
+                <input type="file" accept="image/*" onChange={handleBgUpload} className="hidden" />
+              </label>
+
+              {customBg && (
+                <button onClick={() => { setCustomBg(''); showToast('Fundo padrão restaurado.', 'info'); }} className="p-2 text-xs text-red-600 font-bold text-left hover:underline">
+                  Remover Fundo Personalizado
+                </button>
+              )}
+
               {userRole === 'admin' && (
                 <button onClick={() => router.push('/permissoes')} className="p-3 rounded text-left font-semibold text-sm text-red-600 hover:bg-red-50 transition flex items-center gap-2">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
@@ -599,6 +627,7 @@ export default function Home() {
                 </button>
               )}
             </nav>
+
             <div className="mt-auto pt-4 border-t">
               <button onClick={handleLogout} className="w-full bg-red-500 text-white py-2 rounded text-sm font-bold hover:bg-red-600 transition shadow-sm">Sair da Conta</button>
             </div>
@@ -609,8 +638,8 @@ export default function Home() {
       {/* Corpo da Aplicação */}
       <div className="flex flex-1 overflow-hidden">
         {/* Painel Esquerdo */}
-        <aside className={`w-full md:w-96 bg-white border-r flex flex-col ${mobileView === 'viewer' ? 'hidden md:flex' : 'flex'}`}>
-          <div className="p-3 bg-gray-50 border-b flex flex-col gap-2">
+        <aside className={`w-full md:w-96 bg-white/95 backdrop-blur border-r flex flex-col ${mobileView === 'viewer' ? 'hidden md:flex' : 'flex'}`}>
+          <div className="p-3 bg-gray-50/80 border-b flex flex-col gap-2">
             <div className="flex items-center gap-2">
               <input type="text" placeholder="Pesquisar..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full border px-3 py-1.5 rounded text-sm focus:outline-none focus:ring-1 focus:ring-[#2D68C4]" />
               {activeMenu === 'Albums' && selectedAlbum && userRole === 'admin' && (
@@ -671,9 +700,9 @@ export default function Home() {
         </aside>
 
         {/* Visualizador Direito */}
-        <section className={`flex-1 p-2 md:p-6 overflow-y-auto overflow-x-hidden bg-gray-50 flex justify-center ${mobileView === 'list' ? 'hidden md:flex' : 'flex'}`}>
+        <section className={`flex-1 p-2 md:p-6 overflow-y-auto overflow-x-hidden flex justify-center ${mobileView === 'list' ? 'hidden md:flex' : 'flex'}`}>
           {selectedSong ? (
-            <div className="w-full max-w-4xl bg-white p-3 md:p-8 rounded-xl border shadow-sm h-fit flex flex-col">
+            <div className="w-full max-w-4xl bg-white/95 backdrop-blur p-3 md:p-8 rounded-xl border shadow-sm h-fit flex flex-col">
               <div className="md:hidden mb-2">
                 <button onClick={() => setMobileView('list')} className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold px-3 py-1.5 rounded text-xs transition flex items-center gap-1.5">
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
@@ -762,7 +791,7 @@ export default function Home() {
                     </div>
                   </div>
 
-                  {/* Modo de Edição ou Visualização */}
+                  {/* Modo de Edição ou Visualização com reconhecimento perfeito de F7M, C7M, etc. */}
                   {isEditing ? (
                     <div className="fixed inset-0 z-50 bg-white p-4 md:p-8 flex flex-col gap-4 overflow-y-auto">
                       <div className="flex justify-between items-center border-b pb-3">
@@ -787,23 +816,34 @@ export default function Home() {
                     <div 
                       id="pure-song-content" 
                       ref={scrollContainerRef} 
-                      className="font-mono text-xs md:text-sm leading-relaxed overflow-y-auto max-h-[60vh] p-2 md:p-4 whitespace-pre-wrap break-words bg-white [&:fullscreen]:h-screen [&:fullscreen]:max-h-none [&:fullscreen]:w-screen [&:fullscreen]:flex [&:fullscreen]:flex-col [&:fullscreen]:justify-start [&:fullscreen]:p-8 [&:fullscreen]:text-base"
+                      className="font-mono text-xs md:text-sm leading-relaxed overflow-y-auto max-h-[60vh] p-2 md:p-4 whitespace-pre-wrap break-words bg-white/90 backdrop-blur rounded-lg [&:fullscreen]:h-screen [&:fullscreen]:max-h-none [&:fullscreen]:w-screen [&:fullscreen]:flex [&:fullscreen]:flex-col [&:fullscreen]:justify-start [&:fullscreen]:p-8 [&:fullscreen]:text-base"
                     >
                       <div className="hidden [&:fullscreen]:block mb-4 border-b pb-2">
                         <h2 className="text-xl font-bold">{selectedSong.title} - {selectedSong.artist} (Tom: {selectedSong.key})</h2>
                       </div>
-                      {selectedSong.content.split('\n').map((line, idx) => (
-                        <div key={idx} className={isLineOfChords(line) ? 'text-red-600 font-bold' : 'text-gray-800'}>
-                          {line === '' ? '\u00A0' : line}
-                        </div>
-                      ))}
+                      {selectedSong.content.split('\n').map((line, idx) => {
+                        const parts = line.split(/(\s+)/)
+                        return (
+                          <div key={idx} className={line.trim() === '' ? 'h-4' : ''}>
+                            {line === '' ? '\u00A0' : parts.map((part, pIdx) => {
+                              const chordRegex = /^([A-G][#b]?)(m|maj|min|dim|aug|sus|7M|M7|6|7|9|11|13)?(\d+)?(\/[A-G][#b]?)?$/
+                              const isChord = chordRegex.test(part.trim())
+                              return (
+                                <span key={pIdx} className={isChord && part.trim() !== '' ? 'text-red-600 font-bold' : 'text-gray-800'}>
+                                  {part}
+                                </span>
+                              )
+                            })}
+                          </div>
+                        )
+                      })}
                     </div>
                   )}
                 </>
               )}
             </div>
           ) : (
-            <div className="flex items-center justify-center text-gray-400">Selecione uma cifra ou álbum</div>
+            <div className="flex items-center justify-center text-gray-500 font-semibold bg-white/60 backdrop-blur p-8 rounded-xl">Selecione uma cifra ou álbum</div>
           )}
         </section>
       </div>
