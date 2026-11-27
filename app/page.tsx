@@ -47,7 +47,7 @@ function isLineOfChords(line: string): boolean {
   // Regex blindada para qualquer acorde padrão, com 7M, maj7, comissões de baixo (ex: F7M, C#7M/G#)
   const chordRegex = /^[A-G][#b]?(?:m|maj|min|dim|aug|sus|7M|M7|6|7|9|11|13)?(?:\d+)?(?:\/[A-G][#b]?)?$/
   return words.length > 0 && words.every(word => chordRegex.test(word))
-}
+} 
 
 export default function Home() {
   const router = useRouter()
