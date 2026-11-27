@@ -4,6 +4,8 @@ import React, { useState, useEffect, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import { supabase } from '../../../lib/supabase'
 import { jsPDF } from 'jspdf'
+import { App as CapApp, BackButtonListenerEvent } from '@capacitor/app'
+import type { PluginListenerHandle } from '@capacitor/core'
 
 interface Song {
   id: string
@@ -65,11 +67,30 @@ export default function SharedSongClient() {
       setLoading(false)
     }
     loadSharedSong()
-
-    const handleFullscreenChange = () => setIsFullscreenActive(!!document.fullscreenElement)
-    document.addEventListener('fullscreenchange', handleFullscreenChange)
-    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange)
   }, [songId])
+
+  // Intercepta o botão Voltar nativo do Android com tipagem correta
+  useEffect(() => {
+    let listenerHandle: PluginListenerHandle | null = null
+
+    CapApp.addListener('backButton', ({ canGoBack }: BackButtonListenerEvent) => {
+      if (isFullscreenActive) {
+        setIsFullscreenActive(false)
+      } else if (canGoBack) {
+        window.history.back()
+      } else {
+        CapApp.exitApp()
+      }
+    }).then((handle: PluginListenerHandle) => {
+      listenerHandle = handle
+    })
+
+    return () => {
+      if (listenerHandle) {
+        listenerHandle.remove()
+      }
+    }
+  }, [isFullscreenActive])
 
   useEffect(() => {
     let interval: ReturnType<typeof setInterval>
@@ -112,16 +133,6 @@ export default function SharedSongClient() {
       .join('\n')
 
     setSong({ ...song, key: newKey, content: transposedContent })
-  }
-
-  const handleFullscreen = () => {
-    const elem = document.getElementById('pure-song-content')
-    if (!elem) return
-    if (!document.fullscreenElement) {
-      elem.requestFullscreen().catch(() => {})
-    } else {
-      document.exitFullscreen().catch(() => {})
-    }
   }
 
   const handleDownloadPDF = () => {
@@ -238,10 +249,9 @@ export default function SharedSongClient() {
               </div>
             </div>
 
-            {/* Apenas Tela Cheia e PDF */}
             <div className="flex flex-wrap items-center gap-1.5">
               <button
-                onClick={handleFullscreen}
+                onClick={() => setIsFullscreenActive(true)}
                 className="bg-gray-700 hover:bg-gray-800 text-white px-2.5 py-1.5 rounded text-xs font-semibold shadow-sm transition"
               >
                 Tela Cheia
@@ -256,15 +266,37 @@ export default function SharedSongClient() {
             </div>
           </div>
 
-          {/* Container exclusivo para Tela Cheia (oculta barras e mostra apenas a cifra em tela cheia) */}
+          {/* Container da Cifra (Tela Normal vs Tela Cheia no App/Web) */}
           <div
             id="pure-song-content"
             ref={scrollContainerRef}
-            className="font-mono text-xs md:text-sm leading-relaxed overflow-y-auto max-h-[60vh] p-2 md:p-4 whitespace-pre-wrap break-words bg-white rounded-lg [&:fullscreen]:h-screen [&:fullscreen]:max-h-none [&:fullscreen]:w-screen [&:fullscreen]:flex [&:fullscreen]:flex-col [&:fullscreen]:justify-start [&:fullscreen]:p-8 [&:fullscreen]:text-base"
+            className={
+              isFullscreenActive
+                ? 'fixed inset-0 z-50 h-screen w-screen overflow-y-auto bg-white px-4 pb-10 pt-14 font-mono text-base leading-relaxed whitespace-pre-wrap break-words'
+                : 'font-mono text-xs md:text-sm leading-relaxed overflow-y-auto max-h-[60vh] p-2 md:p-4 whitespace-pre-wrap break-words bg-white rounded-lg'
+            }
           >
-            <div className="hidden [&:fullscreen]:block mb-4 border-b pb-2">
-              <h2 className="text-xl font-bold">{song?.title} - {song?.artist} (Tom: {song?.key})</h2>
-            </div>
+            {isFullscreenActive && (
+              <>
+                <button
+                  onClick={() => setIsFullscreenActive(false)}
+                  aria-label="Sair da tela cheia"
+                  className="fixed top-3 right-3 z-50 flex h-9 w-9 items-center justify-center rounded-full bg-gray-900/75 text-white backdrop-blur-sm border border-white/20 shadow-md active:scale-95 transition"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
+                </button>
+
+                <div className="mb-4 border-b border-gray-200 pb-2 pr-12">
+                  <h2 className="text-lg font-bold text-gray-900 truncate">
+                    {song?.title} <span className="text-sm font-normal text-gray-500">({song?.artist} • Tom: {song?.key})</span>
+                  </h2>
+                </div>
+              </>
+            )}
+
             {renderFormattedContent(song?.content || '')}
           </div>
         </div>
