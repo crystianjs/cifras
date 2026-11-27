@@ -45,7 +45,7 @@ export default function LoginPage() {
 
         <div className="text-center w-full">
           <h1 className="text-2xl font-bold text-gray-900">Meu Cifras</h1>
-          <p className="text-xs text-gray-500 mt-1">Acesse seu repertório pessoal</p>
+          <p className="text-xs text-gray-500 mt-1">Louvores e Músicas</p>
         </div>
 
         {message && (
@@ -90,7 +90,7 @@ export default function LoginPage() {
 
         <div className="text-center pt-3 border-t w-full">
           <p className="text-xs text-gray-500 font-medium">
-            Não possui acesso? <span className="text-gray-700 font-bold">Entre em contato com um administrador (15) 9811-49404.</span>
+            Não possui acesso? <br></br><span className="text-gray-700 font-bold">Entre em contato com um administrador (15) 9811-49404.</span>
           </p>
         </div>
       </div>
