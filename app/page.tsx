@@ -51,8 +51,6 @@ export default function Home() {
   const [accessRequested, setAccessRequested] = useState(false)
 
   const [toast, setToast] = useState<ToastNotification | null>(null)
-
-  // Estado para Fundo Personalizado (Celular/Internet)
   const [customBg, setCustomBg] = useState<string>('')
 
   const [songs, setSongs] = useState<Song[]>([])
@@ -432,7 +430,6 @@ export default function Home() {
     router.push('/login')
   }
 
-  // Função para tratar upload de imagem do celular/computador como fundo
   const handleBgUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
@@ -514,7 +511,7 @@ export default function Home() {
   return (
     <main 
       className="h-screen w-screen overflow-hidden text-gray-900 flex flex-col font-sans relative bg-gray-100"
-      style={customBg ? { backgroundImage: `url(${customBg})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}
+      style={customBg.startsWith('linear-gradient') ? { background: customBg } : customBg ? { backgroundImage: `url(${customBg})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}
     >
       
       {/* Notificação Flutuante (Toast de 5 segundos) */}
@@ -596,7 +593,7 @@ export default function Home() {
       {isSidebarOpen && (
         <div className="fixed inset-0 z-50 flex">
           <div className="fixed inset-0 bg-black/50" onClick={() => setIsSidebarOpen(false)} />
-          <aside className="relative w-72 bg-white h-full shadow-2xl flex flex-col z-10 p-4 gap-4">
+          <aside className="relative w-72 bg-white h-full shadow-2xl flex flex-col z-10 p-4 gap-4 overflow-y-auto">
             <div className="flex justify-between items-center border-b pb-3">
               <h2 className="font-bold text-lg text-gray-800">Menu Principal</h2>
               <button onClick={() => setIsSidebarOpen(false)} className="text-gray-500 hover:text-gray-800 p-1" aria-label="Fechar Menu">
@@ -608,20 +605,30 @@ export default function Home() {
               <button onClick={() => { setActiveMenu('Scores'); setSelectedAlbum(null); setIsSidebarOpen(false); }} className={`p-3 rounded text-left font-semibold text-sm transition ${activeMenu === 'Scores' ? 'bg-blue-50 text-[#2D68C4]' : 'hover:bg-gray-50'}`}>Cifras</button>
               <button onClick={() => { setActiveMenu('Albums'); setSelectedAlbum(null); setIsSidebarOpen(false); }} className={`p-3 rounded text-left font-semibold text-sm transition ${activeMenu === 'Albums' ? 'bg-blue-50 text-[#2D68C4]' : 'hover:bg-gray-50'}`}>Álbuns</button>
               
-              {/* Botão de Fundo Personalizado no Menu */}
-              <label className="p-3 rounded text-left font-semibold text-sm text-gray-700 hover:bg-gray-50 transition cursor-pointer flex items-center justify-between">
-                <span>Alterar Fundo (Celular/Web)</span>
-                <input type="file" accept="image/*" onChange={handleBgUpload} className="hidden" />
-              </label>
+              {/* Seção de Fundos Prontos e Personalizados */}
+              <div className="p-2 mt-2 bg-gray-50 rounded-lg border flex flex-col gap-2">
+                <p className="text-xs font-bold text-gray-500 uppercase px-1">Plano de Fundo</p>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <button onClick={() => { setCustomBg('linear-gradient(135deg, #0D0E12 0%, #16171D 100%)'); showToast('Tema Noite Profunda aplicado.', 'info'); }} className="p-2 bg-[#0D0E12] text-white rounded text-[11px] font-bold border border-gray-700">Noite</button>
+                  <button onClick={() => { setCustomBg('linear-gradient(135deg, #1e293b 0%, #0f172a 100%)'); showToast('Tema Azul Acústico aplicado.', 'info'); }} className="p-2 bg-slate-800 text-white rounded text-[11px] font-bold border border-slate-600">Azul</button>
+                  <button onClick={() => { setCustomBg('linear-gradient(135deg, #311010 0%, #1a0505 100%)'); showToast('Tema Vinho Louvor aplicado.', 'info'); }} className="p-2 bg-red-950 text-white rounded text-[11px] font-bold border border-red-900">Vinho</button>
+                  <button onClick={() => { setCustomBg('linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)'); showToast('Tema Papel Limpo aplicado.', 'info'); }} className="p-2 bg-gray-200 text-gray-800 rounded text-[11px] font-bold border border-gray-300">Papel</button>
+                </div>
 
-              {customBg && (
-                <button onClick={() => { setCustomBg(''); showToast('Fundo padrão restaurado.', 'info'); }} className="p-2 text-xs text-red-600 font-bold text-left hover:underline">
-                  Remover Fundo Personalizado
-                </button>
-              )}
+                <label className="mt-1 p-2 bg-[#2D68C4] text-white text-center rounded text-xs font-bold hover:bg-blue-700 transition cursor-pointer">
+                  <span>Carregar da Galeria/Web</span>
+                  <input type="file" accept="image/*" onChange={handleBgUpload} className="hidden" />
+                </label>
+
+                {customBg && (
+                  <button onClick={() => { setCustomBg(''); showToast('Fundo padrão restaurado.', 'info'); }} className="p-1 text-xs text-red-600 font-bold text-center hover:underline">
+                    Remover Fundo Customizado
+                  </button>
+                )}
+              </div>
 
               {userRole === 'admin' && (
-                <button onClick={() => router.push('/permissoes')} className="p-3 rounded text-left font-semibold text-sm text-red-600 hover:bg-red-50 transition flex items-center gap-2">
+                <button onClick={() => router.push('/permissoes')} className="mt-2 p-3 rounded text-left font-semibold text-sm text-red-600 hover:bg-red-50 transition flex items-center gap-2">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
                   <span>Gerenciar Permissões</span>
                 </button>
