@@ -132,6 +132,18 @@ export default function PermissoesPage() {
     }
   }
 
+  const handleDeleteUser = async (userId: string, userEmail: string) => {
+    if (confirm(`Tem certeza que deseja excluir o usuário ${userEmail}? Esta ação removerá o perfil do sistema.`)) {
+      const { error } = await supabase.from('profiles').delete().eq('id', userId)
+      if (!error) {
+        alert('Usuário removido com sucesso!')
+        loadData()
+      } else {
+        alert('Erro ao remover usuário: ' + error.message)
+      }
+    }
+  }
+
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newUserEmail || !newUserPassword) {
@@ -152,7 +164,7 @@ export default function PermissoesPage() {
       if (data.user) {
         await supabase.from('profiles').update({ role: newUserRole }).eq('id', data.user.id)
       }
-      alert(`Usuário ${newUserEmail} criado com sucesso como ${newUserRole}!`)
+      alert(`Usuário ${newUserEmail} criado com sucesso e pronto para uso!`)
       setNewUserEmail('')
       setNewUserPassword('')
       setNewUserRole('convidado')
@@ -191,8 +203,11 @@ export default function PermissoesPage() {
     <main className="min-h-screen bg-gray-100 text-gray-900 flex flex-col font-sans">
       <header className="bg-[#2D68C4] text-white px-6 py-3 flex justify-between items-center shadow-md">
         <div className="flex items-center gap-3">
-          <button onClick={() => router.push('/')} className="bg-blue-700 hover:bg-blue-800 px-3 py-1.5 rounded text-xs font-bold transition">
-            ← Voltar para Cifras
+          <button onClick={() => router.push('/')} className="bg-blue-700 hover:bg-blue-800 px-3 py-1.5 rounded text-xs font-bold transition flex items-center gap-1.5">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+            Voltar para Cifras
           </button>
           <h1 className="text-xl font-bold">Painel do Administrador</h1>
         </div>
@@ -233,7 +248,10 @@ export default function PermissoesPage() {
             onClick={() => setIsModalOpen(true)}
             className="bg-[#2D68C4] hover:bg-blue-700 text-white text-xs font-bold px-3 py-2 rounded shadow transition flex items-center gap-1.5 my-2"
           >
-            + Novo Usuário
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4" />
+            </svg>
+            Novo Usuário
           </button>
         )}
       </div>
@@ -248,6 +266,7 @@ export default function PermissoesPage() {
                   <th className="p-4">Cargo / Status</th>
                   <th className="p-4 text-center">Importar</th>
                   <th className="p-4 text-center">Compartilhar</th>
+                  <th className="p-4 text-center">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y text-sm">
@@ -258,7 +277,7 @@ export default function PermissoesPage() {
                         <span>{p.email}</span>
                         {p.access_requested && p.role === 'pendente' && (
                           <span className="bg-amber-100 text-amber-800 border border-amber-300 text-[10px] px-2 py-0.5 rounded-full font-bold animate-pulse">
-                            Pediu Acesso!
+                            Pediu Acesso
                           </span>
                         )}
                       </div>
@@ -277,6 +296,18 @@ export default function PermissoesPage() {
                     </td>
                     <td className="p-4 text-center"><input type="checkbox" checked={p.can_import} onChange={() => handleTogglePerm(p.id, 'can_import', p.can_import)} className="w-4 h-4 accent-[#2D68C4]" /></td>
                     <td className="p-4 text-center"><input type="checkbox" checked={p.can_share} onChange={() => handleTogglePerm(p.id, 'can_share', p.can_share)} className="w-4 h-4 accent-[#2D68C4]" /></td>
+                    <td className="p-4 text-center">
+                      <button 
+                        onClick={() => handleDeleteUser(p.id, p.email)} 
+                        className="bg-red-600 hover:bg-red-700 text-white px-2.5 py-1 rounded text-xs font-bold transition shadow-sm inline-flex items-center gap-1"
+                        title="Remover Usuário"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                        Remover
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -290,7 +321,12 @@ export default function PermissoesPage() {
               <div key={req.id} className="bg-white p-4 rounded-xl shadow-sm border flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
                 <div>
                   <p className="text-sm font-bold text-gray-800">{req.user_email} quer acessar a cifra:</p>
-                  <p className="text-xs text-[#2D68C4] font-semibold mt-0.5">🔒 {req.songs?.title || 'Cifra Restrita'}</p>
+                  <p className="text-xs text-[#2D68C4] font-semibold mt-0.5 flex items-center gap-1.5">
+                    <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                    <span>{req.songs?.title || 'Cifra Restrita'}</span>
+                  </p>
                 </div>
                 <div className="flex gap-2">
                   <button onClick={() => handleResolveRequest(req.id, req.song_id, req.user_id, true)} className="bg-green-600 text-white text-xs px-3 py-1.5 rounded font-bold hover:bg-green-700">Aprovar</button>
@@ -310,7 +346,12 @@ export default function PermissoesPage() {
               <div key={grant.id} className="bg-white p-4 rounded-xl shadow-sm border flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
                 <div>
                   <p className="text-sm font-bold text-gray-800">{grant.user_email}</p>
-                  <p className="text-xs text-amber-700 font-semibold mt-0.5">🔓 Acesso liberado à cifra: {grant.songs?.title || 'Cifra'}</p>
+                  <p className="text-xs text-amber-700 font-semibold mt-0.5 flex items-center gap-1.5">
+                    <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
+                    </svg>
+                    <span>Acesso liberado à cifra: {grant.songs?.title || 'Cifra'}</span>
+                  </p>
                 </div>
                 <button 
                   onClick={() => handleRevokeGrant(grant.id)} 
@@ -353,7 +394,11 @@ export default function PermissoesPage() {
           <div className="bg-white rounded-xl shadow-lg max-w-md w-full p-6 flex flex-col gap-4">
             <div className="flex justify-between items-center border-b pb-3">
               <h3 className="font-bold text-gray-800 text-lg">Criar Novo Usuário</h3>
-              <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600 font-bold">✕</button>
+              <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600 p-1" aria-label="Fechar">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
             </div>
             <form onSubmit={handleCreateUser} className="flex flex-col gap-4">
               <div>
