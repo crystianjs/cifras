@@ -52,7 +52,7 @@ export default function Home() {
 
   const [toast, setToast] = useState<ToastNotification | null>(null)
   
-  // Estado para a cor das cifras (Padrão: Vermelho)
+  // Cor da cifra individual do usuário (vinculada ao perfil)
   const [chordColor, setChordColor] = useState<'text-red-600' | 'text-blue-600' | 'text-amber-500'>('text-red-600')
 
   const [songs, setSongs] = useState<Song[]>([])
@@ -128,6 +128,9 @@ export default function Home() {
         setCanImport(prof.can_import)
         setCanShare(prof.can_share)
         setAccessRequested(prof.access_requested || false)
+        if (prof.chord_color) {
+          setChordColor(prof.chord_color)
+        }
       }
 
       if (mounted) {
@@ -155,6 +158,23 @@ export default function Home() {
       document.removeEventListener('fullscreenchange', handleFS)
     }
   }, [router])
+
+  // Função para salvar a cor da cifra no perfil do usuário logado (usando o ID)
+  async function handleUpdateUserChordColor(color: 'text-red-600' | 'text-blue-600' | 'text-amber-500') {
+    setChordColor(color)
+    if (!user) return
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({ chord_color: color })
+      .eq('id', user.id)
+
+    if (!error) {
+      showToast('Preferência de cor salva no seu perfil.', 'success')
+    } else {
+      showToast('Erro ao salvar preferência de cor.', 'error')
+    }
+  }
 
   async function loadUserData(authUser: any, role = userRole) {
     const { data: songsData } = await supabase.from('songs').select('*').order('title')
@@ -590,24 +610,24 @@ export default function Home() {
               <button onClick={() => { setActiveMenu('Scores'); setSelectedAlbum(null); setIsSidebarOpen(false); }} className={`p-3 rounded text-left font-semibold text-sm transition ${activeMenu === 'Scores' ? 'bg-blue-50 text-[#2D68C4]' : 'hover:bg-gray-50'}`}>Cifras</button>
               <button onClick={() => { setActiveMenu('Albums'); setSelectedAlbum(null); setIsSidebarOpen(false); }} className={`p-3 rounded text-left font-semibold text-sm transition ${activeMenu === 'Albums' ? 'bg-blue-50 text-[#2D68C4]' : 'hover:bg-gray-50'}`}>Álbuns</button>
               
-              {/* Seletor de Cores da Cifra */}
+              {/* Seletor de Cores da Cifra (Salvando no Perfil via ID) */}
               <div className="p-2.5 mt-2 bg-gray-50 rounded-lg border flex flex-col gap-2">
-                <p className="text-xs font-bold text-gray-500 uppercase px-1">Cor da Cifra</p>
+                <p className="text-xs font-bold text-gray-500 uppercase px-1">Cor da Cifra no Meu Perfil</p>
                 <div className="grid grid-cols-3 gap-1.5">
                   <button 
-                    onClick={() => { setChordColor('text-red-600'); showToast('Cor padrão vermelha aplicada.', 'info'); }}
+                    onClick={() => handleUpdateUserChordColor('text-red-600')}
                     className={`p-2 rounded text-xs font-bold border transition ${chordColor === 'text-red-600' ? 'bg-red-600 text-white border-red-700 shadow-sm' : 'bg-white text-red-600 border-red-200 hover:bg-red-50'}`}
                   >
                     Vermelho
                   </button>
                   <button 
-                    onClick={() => { setChordColor('text-blue-600'); showToast('Cor azul aplicada.', 'info'); }}
+                    onClick={() => handleUpdateUserChordColor('text-blue-600')}
                     className={`p-2 rounded text-xs font-bold border transition ${chordColor === 'text-blue-600' ? 'bg-blue-600 text-white border-blue-700 shadow-sm' : 'bg-white text-blue-600 border-blue-200 hover:bg-blue-50'}`}
                   >
                     Azul
                   </button>
                   <button 
-                    onClick={() => { setChordColor('text-amber-500'); showToast('Cor amarela aplicada.', 'info'); }}
+                    onClick={() => handleUpdateUserChordColor('text-amber-500')}
                     className={`p-2 rounded text-xs font-bold border transition ${chordColor === 'text-amber-500' ? 'bg-amber-500 text-white border-amber-600 shadow-sm' : 'bg-white text-amber-600 border-amber-200 hover:bg-amber-50'}`}
                   >
                     Amarelo
@@ -786,7 +806,7 @@ export default function Home() {
                     </div>
                   </div>
 
-                  {/* Modo de Edição ou Visualização com aplicação da cor escolhida para os acordes */}
+                  {/* Modo de Edição ou Visualização com aplicação da cor escolhida pelo usuário */}
                   {isEditing ? (
                     <div className="fixed inset-0 z-50 bg-white p-4 md:p-8 flex flex-col gap-4 overflow-y-auto">
                       <div className="flex justify-between items-center border-b pb-3">
